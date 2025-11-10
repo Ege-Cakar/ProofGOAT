@@ -25,9 +25,6 @@ HERMES/
 │ └── meta/ # metadata parquet files
 └── project_config.yaml # model + extraction + dataset configuration
 
-yaml
-Copy code
-
 ---
 
 ## Installation
@@ -36,9 +33,6 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
-
-markdown
-Copy code
 
 Dependencies:
 
@@ -55,21 +49,9 @@ Dependencies:
 
 ## Data Preparation
 
-ProofNet provides the following fields:
-
-- `nl_statement`
-- `nl_proof`
-- `formal_statement`  (Lean theorem signature only)
-- `src_header`
-
-We download Parquet files directly from HuggingFace’s dataset server.
-
 ### Step 1 — Build `pairs.jsonl`
 
 python -m scripts.create_pairs
-
-markdown
-Copy code
 
 This:
 
@@ -79,10 +61,6 @@ This:
 - writes:
 
 data/pairs.jsonl
-
-yaml
-Copy code
-
 ---
 
 ## Embedding Extraction
@@ -91,9 +69,6 @@ Extract hidden states from NL and Lean models.
 
 python -m scripts.extract_embeddings --config project_config.yaml
 
-markdown
-Copy code
-
 This:
 
 - loads NL model: `deepseek-ai/DeepSeek-Prover-V2-7B`
@@ -101,11 +76,7 @@ This:
 - tokenizes text
 - extracts final-layer hidden representations
 - saves compressed embedding tensors to:
-
 outputs/embeddings/
-
-yaml
-Copy code
 
 ---
 
@@ -120,13 +91,6 @@ Approach:
 - Flow-matching or Benamou–Brenier loss
 - LLM weights frozen; only the transport field v_θ is trained
 
-Core implementation lives in:
-
-src/flows/
-
-yaml
-Copy code
-
 ---
 
 ## Evaluation
@@ -139,10 +103,3 @@ We evaluate:
 - **OT trajectory diagnostics:** latent flow visualization
 
 ---
-
-## Reproducibility
-
-- Seeds fixed for embedding extraction
-- Models frozen for consistency
-- Lean verification is deterministic
-- All preprocessing steps logged to `outputs/meta/`
