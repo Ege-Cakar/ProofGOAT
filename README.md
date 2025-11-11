@@ -61,7 +61,9 @@ This:
 - removes empty entries
 - writes:
 
-```data/pairs.jsonl```
+```
+data/pairs.jsonl
+```
 ---
 
 ## Embedding Extraction
