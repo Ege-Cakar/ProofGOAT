@@ -42,12 +42,12 @@ cache/
 # ----------------------------
 # Data & generated datasets
 # ----------------------------
-data/
-outputs/
-*.jsonl
-*.parquet
-*.npz
-*.csv
+# data/
+# outputs/
+# *.jsonl
+# *.parquet
+# *.npz
+# *.csv
 
 # Allow only config files through:
 !project_config.yaml
