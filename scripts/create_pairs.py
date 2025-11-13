@@ -68,6 +68,7 @@ def main():
                 pairs.append({
                     "id": row["id"],
                     "nl_text": row["nl_statement"],
+                    "nl_proof": row["nl_proof"],
                     "lean_text": row["formal_statement"],
                     "src_header": row["src_header"],
                     "split": split
