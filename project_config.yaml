@@ -1,5 +1,5 @@
 data:
-  input_jsonl: "data/pairs.jsonl"    # [{"id": "...", "nl_text": "...", "lean_text": "..."}]
+  input_jsonl: "data/fake_pairs.jsonl"    # [{"id": "...", "nl_proof": "...", "lean_proof": "..."}]
   out_dir: "outputs/"
 
 models:

@@ -18,8 +18,8 @@ def main(cfg):
     # Load data
     # ----------------------------
     pairs = read_jsonl(cfg["data"]["input_jsonl"])
-    nl_texts = [ex["nl_text"] for ex in pairs]
-    lean_texts = [ex["lean_text"] for ex in pairs]
+    nl_texts = [ex["nl_proof"] for ex in pairs]
+    lean_texts = [ex["lean_proof"] for ex in pairs]
 
     # ----------------------------
     # Load NL model + tokenizer
