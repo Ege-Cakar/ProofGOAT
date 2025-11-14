@@ -13,3 +13,7 @@ extract:
   batch_size: 2
   fp16: true
   save_format: "parquet"  # parquet|npz
+
+decode:
+  max_new_tokens: 256
+  max_time: 60

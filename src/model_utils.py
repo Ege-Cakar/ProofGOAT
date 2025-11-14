@@ -1,16 +1,22 @@
 import torch
-from transformers import AutoModel, AutoTokenizer
-from typing import Dict, Any
+from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM
 
-def load_model_and_tokenizer(model_name, fp16):
+def load_model_and_tokenizer(model_name, fp16, causal: bool = False):
     dtype = torch.float16 if fp16 else torch.float32
 
     # Force CPU, avoid device_map, avoid offloading
-    model = AutoModel.from_pretrained(
-        model_name,
-        torch_dtype=dtype,
-        low_cpu_mem_usage=False,   # Avoids offloading logic
-    )
+    if causal:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=dtype,
+            low_cpu_mem_usage=False,   # Avoids offloading logic
+        )
+    else:
+        model = AutoModel.from_pretrained(
+            model_name,
+            torch_dtype=dtype,
+            low_cpu_mem_usage=False,   # Avoids offloading logic
+        )
 
     model.to("cpu")  # Explicitly place on CPU
 

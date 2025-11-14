@@ -14,3 +14,26 @@ def save_parquet(records: List[Dict], out_path: str):
 
 def save_npz(obj: Dict, out_path: str):
     np.savez_compressed(out_path, **obj)
+
+def verbose_print(*args):
+    boundary = "=" * 100
+    to_print = boundary + "\n" + " ".join(str(arg) for arg in args) + "\n" + boundary
+    print(to_print, flush=True)
+
+def load_embedding(path: str, id: int):
+    """
+    Load embedding from parquet file.
+    
+    Args:
+        path: Path to the parquet file
+        id: row ID of the embedding to load
+
+    Note:
+        The embedding is a numpy array with shape [num_tokens, hidden_dim]
+        where num_tokens is the sequence length and hidden_dim is the model's hidden dimension
+    Returns:
+        Embedding as a list of floats
+    """
+    df = pd.read_parquet(path)
+    embedding = np.vstack(df.iloc[id].values)
+    return embedding.tolist()
