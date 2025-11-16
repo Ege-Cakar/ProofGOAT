@@ -90,3 +90,5 @@ torch_cache/
 build/
 dist/
 *.egg-info/
+
+/lean_env
