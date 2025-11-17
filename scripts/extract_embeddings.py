@@ -5,6 +5,8 @@ import sys
 import yaml
 import numpy as np
 import torch
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 # Resolve project root
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -80,7 +82,8 @@ def main(cfg):
     # Extract NL embeddings (streaming shards)
     # ----------------------------
     print("Extracting NL embeddings...")
-    nl_shard_idx = 0
+    nl_writer = None
+    nl_out_path = os.path.join(out_dir, "nl_embeddings.parquet")
     for shard in chunked(iter_jsonl(data_path), size=256):
         nl_texts = [ex["nl_proof"] for ex in shard]
         nl_embeds = extract_hidden_states(
@@ -95,17 +98,24 @@ def main(cfg):
         save_format = cfg["extract"]["save_format"]
         if save_format == "npz":
             obj = {f"h{i}": x for i, x in enumerate(nl_embeds)}
-            save_npz(obj, os.path.join(out_dir, f"nl_embeddings-{nl_shard_idx:05d}.npz"))
+            save_npz(obj, os.path.join(out_dir, "nl_embeddings.npz"))
+            # Overwrite single NPZ; if you want append semantics, prefer shards
         else:
-            # Upcast to float32 for Parquet compatibility
-            recs = [{"hidden": x.astype(np.float32).tolist()} for x in nl_embeds]
-            save_parquet(recs, os.path.join(out_dir, f"nl_embeddings-{nl_shard_idx:05d}.parquet"))
+            # Build Arrow array: list<list<float32>> to avoid pandas overhead
+            hidden_list = [x.astype(np.float32).tolist() for x in nl_embeds]
+            col = pa.array(hidden_list, type=pa.list_(pa.list_(pa.float32())))
+            tbl = pa.Table.from_arrays([col], names=["hidden"])
+            if nl_writer is None:
+                nl_writer = pq.ParquetWriter(nl_out_path, schema=tbl.schema)
+            nl_writer.write_table(tbl)
 
-        nl_shard_idx += 1
         del nl_texts, nl_embeds, shard
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+    if 'nl_writer' in locals() and nl_writer is not None:
+        nl_writer.close()
 
     # ----------------------------
     # Load Lean model
@@ -120,7 +130,8 @@ def main(cfg):
     # Extract Lean embeddings (streaming shards)
     # ----------------------------
     print("Extracting Lean embeddings...")
-    lean_shard_idx = 0
+    lean_writer = None
+    lean_out_path = os.path.join(out_dir, "lean_embeddings.parquet")
     for shard in chunked(iter_jsonl(data_path), size=256):
         lean_texts = [ex["lean_proof"] for ex in shard]
         lean_embeds = extract_hidden_states(
@@ -135,18 +146,24 @@ def main(cfg):
         save_format = cfg["extract"]["save_format"]
         if save_format == "npz":
             obj = {f"h{i}": x for i, x in enumerate(lean_embeds)}
-            save_npz(obj, os.path.join(out_dir, f"lean_embeddings-{lean_shard_idx:05d}.npz"))
+            save_npz(obj, os.path.join(out_dir, "lean_embeddings.npz"))
         else:
-            recs = [{"hidden": x.astype(np.float32).tolist()} for x in lean_embeds]
-            save_parquet(recs, os.path.join(out_dir, f"lean_embeddings-{lean_shard_idx:05d}.parquet"))
+            hidden_list = [x.astype(np.float32).tolist() for x in lean_embeds]
+            col = pa.array(hidden_list, type=pa.list_(pa.list_(pa.float32())))
+            tbl = pa.Table.from_arrays([col], names=["hidden"])
+            if lean_writer is None:
+                lean_writer = pq.ParquetWriter(lean_out_path, schema=tbl.schema)
+            lean_writer.write_table(tbl)
 
-        lean_shard_idx += 1
         del lean_texts, lean_embeds, shard
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    print("Done. Saved shard files to:", out_dir)
+    if 'lean_writer' in locals() and lean_writer is not None:
+        lean_writer.close()
+
+    print("Done. Saved outputs to:", out_dir)
 
 
 if __name__ == "__main__":
