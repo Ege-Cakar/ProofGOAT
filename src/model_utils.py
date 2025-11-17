@@ -1,34 +1,28 @@
 import re
 import torch
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, AutoConfig
 from typing import Dict, Any
 
 def load_model_and_tokenizer(model_name, fp16):
     dtype = torch.float16 if fp16 else torch.float32
 
+    # Load and sanitize config first to handle rope_scaling variants consistently
+    cfg = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+    rs = getattr(cfg, "rope_scaling", None)
+    if isinstance(rs, dict):
+        # Keep only accepted keys; provide defaults if missing
+        rs_type = rs.get("type", "linear")
+        rs_factor = rs.get("factor", 1.0)
+        setattr(cfg, "rope_scaling", {"type": rs_type, "factor": rs_factor})
+
     # Force CPU, avoid device_map, avoid offloading
-    try:
-        model = AutoModel.from_pretrained(
-            model_name,
-            torch_dtype=dtype,
-            low_cpu_mem_usage=False,   # Avoids offloading logic
-            trust_remote_code=True,
-        )
-    except ValueError as e:
-        msg = str(e)
-        if "rope_scaling" in msg:
-            # Extract factor if present; fall back to 1.0
-            m = re.search(r"'factor':\s*([0-9]+(?:\.[0-9]+)?)", msg)
-            factor = float(m.group(1)) if m else 1.0
-            model = AutoModel.from_pretrained(
-                model_name,
-                torch_dtype=dtype,
-                low_cpu_mem_usage=False,
-                trust_remote_code=True,
-                rope_scaling={"type": "linear", "factor": factor},
-            )
-        else:
-            raise
+    model = AutoModel.from_pretrained(
+        model_name,
+        config=cfg,
+        torch_dtype=dtype,
+        low_cpu_mem_usage=False,   # Avoids offloading logic
+        trust_remote_code=True,
+    )
 
     model.to("cpu")  # Explicitly place on CPU
 
