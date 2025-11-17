@@ -34,7 +34,8 @@ def _infer_rope_override(model_name: str) -> Optional[Dict[str, Any]]:
 
 
 def load_model_and_tokenizer(model_name, fp16):
-    dtype = torch.float16 if fp16 else torch.float32
+    use_cuda = torch.cuda.is_available()
+    dtype = torch.float16 if fp16 and use_cuda else torch.float32
 
     # Compute a rope_scaling override before any config validation occurs
     rope_override = _infer_rope_override(model_name)
@@ -43,9 +44,10 @@ def load_model_and_tokenizer(model_name, fp16):
     try:
         model = AutoModel.from_pretrained(
             model_name,
-            torch_dtype=dtype,
+            dtype=dtype,
             low_cpu_mem_usage=False,
             trust_remote_code=True,
+            device_map="auto" if use_cuda else None,
             **({"rope_scaling": rope_override} if rope_override is not None else {}),
         )
     except ValueError as e:
@@ -53,15 +55,18 @@ def load_model_and_tokenizer(model_name, fp16):
         if "rope_scaling" in str(e):
             model = AutoModel.from_pretrained(
                 model_name,
-                torch_dtype=dtype,
+                dtype=dtype,
                 low_cpu_mem_usage=False,
                 trust_remote_code=True,
+                device_map="auto" if use_cuda else None,
                 rope_scaling=None,
             )
         else:
             raise
 
-    model.to("cpu")  # Explicitly place on CPU
+    # If not using CUDA, keep on CPU; otherwise device_map handles placement
+    if not use_cuda:
+        model.to("cpu")
 
     tok = AutoTokenizer.from_pretrained(model_name, use_fast=False, trust_remote_code=True)
 

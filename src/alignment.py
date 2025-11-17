@@ -25,8 +25,12 @@ def extract_hidden_states(
             return_tensors="pt"
         )
 
-        for k in enc:
-            enc[k] = enc[k].to("cpu")
+        # Move tensors to the model's device when applicable.
+        try:
+            dev = next(model.parameters()).device
+        except StopIteration:
+            dev = torch.device("cpu")
+        enc = {k: (v.to(dev) if hasattr(v, "to") else v) for k, v in enc.items()}
 
         outputs = model(
             **enc,
@@ -35,9 +39,14 @@ def extract_hidden_states(
         )
 
         hidden = outputs.hidden_states[layer]
+        attn = enc.get("attention_mask")
 
         for j in range(hidden.shape[0]):
-            all_embeddings.append(hidden[j].cpu().numpy())
+            if attn is not None:
+                seq_len = int(attn[j].sum().item())
+                all_embeddings.append(hidden[j, :seq_len].detach().cpu().numpy())
+            else:
+                all_embeddings.append(hidden[j].detach().cpu().numpy())
 
     return all_embeddings
 
