@@ -1,10 +1,10 @@
 data:
-  input_jsonl: "data/fake_pairs.jsonl"    # [{"id": "...", "nl_proof": "...", "lean_proof": "..."}]
+  input_jsonl: "data/herald_pairs.jsonl"    # [{"id": "...", "nl_proof": "...", "lean_proof": "..."}]
   out_dir: "outputs/"
 
 models:
-  nl_model: "deepseek-ai/deepseek-coder-1.3b-base"
-  lean_model: "deepseek-ai/deepseek-coder-1.3b-base"
+  nl_model: "deepseek-ai/DeepSeek-Prover-V2-7B"
+  lean_model: "deepseek-ai/DeepSeek-Prover-V2-7B"
 
 extract:
   nl_layer: -1
