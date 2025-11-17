@@ -1,3 +1,4 @@
+import re
 import torch
 from transformers import AutoModel, AutoTokenizer
 from typing import Dict, Any
@@ -6,15 +7,32 @@ def load_model_and_tokenizer(model_name, fp16):
     dtype = torch.float16 if fp16 else torch.float32
 
     # Force CPU, avoid device_map, avoid offloading
-    model = AutoModel.from_pretrained(
-        model_name,
-        torch_dtype=dtype,
-        low_cpu_mem_usage=False,   # Avoids offloading logic
-    )
+    try:
+        model = AutoModel.from_pretrained(
+            model_name,
+            torch_dtype=dtype,
+            low_cpu_mem_usage=False,   # Avoids offloading logic
+            trust_remote_code=True,
+        )
+    except ValueError as e:
+        msg = str(e)
+        if "rope_scaling" in msg:
+            # Extract factor if present; fall back to 1.0
+            m = re.search(r"'factor':\s*([0-9]+(?:\.[0-9]+)?)", msg)
+            factor = float(m.group(1)) if m else 1.0
+            model = AutoModel.from_pretrained(
+                model_name,
+                torch_dtype=dtype,
+                low_cpu_mem_usage=False,
+                trust_remote_code=True,
+                rope_scaling={"type": "linear", "factor": factor},
+            )
+        else:
+            raise
 
     model.to("cpu")  # Explicitly place on CPU
 
-    tok = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+    tok = AutoTokenizer.from_pretrained(model_name, use_fast=False, trust_remote_code=True)
 
     return model, tok
 
