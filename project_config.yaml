@@ -3,8 +3,8 @@ data:
   out_dir: "outputs/"
 
 models:
-  nl_model: "deepseek-ai/DeepSeek-Prover-V2-7B"
-  lean_model: "deepseek-ai/DeepSeek-Prover-V2-7B"
+  nl_model: "AI-MO/Kimina-Prover-Distill-8B"
+  lean_model: "AI-MO/Kimina-Prover-Distill-8B"
 
 extract:
   nl_layer: -1

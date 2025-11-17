@@ -116,8 +116,8 @@ def main(cfg):
         save_npz(embed_lean, os.path.join(out_dir, "lean_embeddings.npz"))
         print("Saved NPZ embeddings.")
     else:
-        save_parquet(embed_nl, os.path.join(out_dir, "nl_embeddings.parquet"))
-        save_parquet(embed_lean, os.path.join(out_dir, "lean_embeddings.parquet"))
+        save_parquet(embed_nl, os.path.join(out_dir, "herald_nl_embeddings.parquet"))
+        save_parquet(embed_lean, os.path.join(out_dir, "herald_lean_embeddings.parquet"))
         print("Saved Parquet embeddings.")
 
     print("Done.")
