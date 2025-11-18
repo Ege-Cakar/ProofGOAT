@@ -1,0 +1,25 @@
+[project]
+name = "hermes"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "accelerate==0.28.0",
+    "datasets==2.19.0",
+    "gitpython==3.1.42",
+    "huggingface-hub==0.21.2",
+    "mlcroissant==1.0.4",
+    "numpy==1.26.4",
+    "pandas==2.2.0",
+    "protobuf==4.25.3",
+    "psutil==5.9.8",
+    "pyarrow==14.0.2",
+    "requests==2.32.3",
+    "safetensors==0.4.2",
+    "torch==2.2.2",
+    "torchaudio==2.2.2",
+    "torchvision==0.17.2",
+    "tqdm==4.66.4",
+    "transformers==4.39.3",
+]
