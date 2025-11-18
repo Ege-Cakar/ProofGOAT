@@ -40,6 +40,9 @@ def main(cfg):
     time_embed_dim = neo_cfg.get("time_embed_dim", 128)
     num_layers = neo_cfg.get("num_layers", 3)
     mlp_width = neo_cfg.get("mlp_width", 2048)
+    use_film = neo_cfg.get("use_film", False)
+    pos_embed_dim = neo_cfg.get("pos_embed_dim", 128)
+    film_hidden = neo_cfg.get("film_hidden", 256)
     num_steps = neo_cfg.get("num_steps", 8)
     lambda_cycle = neo_cfg.get("lambda_cycle", 0.0)
 
@@ -47,7 +50,15 @@ def main(cfg):
     dl = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
 
     # instantiate model
-    model = NeuralOTFlow(hidden_dim=hidden_dim, time_embed_dim=time_embed_dim, num_layers=num_layers, mlp_width=mlp_width)
+    model = NeuralOTFlow(
+        hidden_dim=hidden_dim,
+        time_embed_dim=time_embed_dim,
+        num_layers=num_layers,
+        mlp_width=mlp_width,
+        use_film=use_film,
+        pos_embed_dim=pos_embed_dim,
+        film_hidden=film_hidden,
+    )
     model = model.to(device)
 
     optimizer = optim.AdamW(model.parameters(), lr=lr)
