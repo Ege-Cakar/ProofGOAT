@@ -57,10 +57,31 @@ class EmbeddingPairDataset(Dataset):
                 rec = {}
                 # allow either 'hidden' or 'embedding' column
                 if "hidden" in row:
-                    rec["hidden"] = np.asarray(row["hidden"], dtype=np.float32)
+                    hidden_data = row["hidden"]
+                    # Handle case where hidden is a numpy array of objects (nested lists)
+                    if isinstance(hidden_data, np.ndarray):
+                        if hidden_data.dtype == object:
+                            # Array of lists - stack them into a 2D array
+                            rec["hidden"] = np.stack([np.asarray(x, dtype=np.float32) for x in hidden_data])
+                        elif hidden_data.ndim == 2:
+                            rec["hidden"] = hidden_data.astype(np.float32)
+                        elif hidden_data.ndim == 1:
+                            # Single vector
+                            rec["hidden"] = hidden_data.astype(np.float32)
+                        else:
+                            rec["hidden"] = np.asarray(hidden_data, dtype=np.float32)
+                    else:
+                        rec["hidden"] = np.asarray(hidden_data, dtype=np.float32)
                 elif "embedding" in row:
                     # fixed-size list column
-                    rec["hidden"] = np.asarray(row["embedding"].to_numpy(), dtype=np.float32)
+                    emb_data = row["embedding"]
+                    if isinstance(emb_data, np.ndarray):
+                        if emb_data.dtype == object:
+                            rec["hidden"] = np.stack([np.asarray(x, dtype=np.float32) for x in emb_data])
+                        else:
+                            rec["hidden"] = emb_data.astype(np.float32)
+                    else:
+                        rec["hidden"] = np.asarray(emb_data, dtype=np.float32)
                 else:
                     # try to interpret first column
                     rec["hidden"] = np.asarray(row.iloc[0], dtype=np.float32)
