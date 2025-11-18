@@ -27,9 +27,13 @@ def to_numpy(x):
         for item in x:
             if isinstance(item, torch.Tensor):
                 arr.append(item.detach().cpu().numpy())
+            elif isinstance(item, np.ndarray):
+                # Avoid copying existing numpy arrays; keep references
+                arr.append(item)
             else:
                 arr.append(np.array(item))
-        return np.array(arr)
+        # Return an object-dtype array to avoid a large contiguous allocation
+        return np.array(arr, dtype=object)
 
     if isinstance(x, np.ndarray):
         return x
@@ -132,4 +136,3 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(f)
 
     main(cfg)
-
