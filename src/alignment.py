@@ -65,3 +65,59 @@ def cosine_alignment_matrix(h_src: torch.Tensor, h_tgt: torch.Tensor, chunk: int
 
 def greedy_bipartite_alignment(M: torch.Tensor):
     return torch.argmax(M, dim=1).cpu().numpy()
+
+
+def ot_transport_embeddings(h_nl: torch.Tensor, neural_ot_model, num_steps: int = 10) -> torch.Tensor:
+    """Transport NL embeddings to Lean space using a NeuralOTFlow instance.
+
+    h_nl: [B, L, d] or [L, d]
+    Returns: same shape tensor transported.
+    """
+    was_batched = True
+    if h_nl.dim() == 2:
+        h_nl = h_nl.unsqueeze(0)
+        was_batched = False
+    device = next(neural_ot_model.parameters()).device
+    h_nl = h_nl.to(device)
+    with torch.no_grad():
+        transported = neural_ot_model.transport_nl_to_lean(h_nl)
+    transported = transported.cpu()
+    if not was_batched:
+        return transported.squeeze(0)
+    return transported
+
+
+def retrieval_metrics(query_embeddings: torch.Tensor, corpus_embeddings: torch.Tensor, ks=(1,5,10,20,50)):
+    """Compute Recall@K and MRR for query vs corpus using cosine similarity.
+
+    query_embeddings: [Nq, d]
+    corpus_embeddings: [Nc, d]
+    Returns dict with recall@k and mrr
+    """
+    q = torch.nn.functional.normalize(query_embeddings, dim=-1)
+    c = torch.nn.functional.normalize(corpus_embeddings, dim=-1)
+    sim = q @ c.T
+    # for each query, rank corpus
+    ranks = torch.argsort(sim, dim=1, descending=True)
+    nq = sim.size(0)
+    results = {}
+    for k in ks:
+        topk = ranks[:, :k]
+        # assume ground-truth is diagonal (i.e., query i matches corpus i)
+        hits = 0
+        for i in range(nq):
+            if (topk[i] == i).any():
+                hits += 1
+        results[f"recall@{k}"] = hits / nq
+
+    # MRR
+    rr = 0.0
+    for i in range(nq):
+        pos = (ranks[i] == i).nonzero(as_tuple=False)
+        if pos.numel() == 0:
+            continue
+        rank = int(pos[0].item()) + 1
+        rr += 1.0 / rank
+    results["mrr"] = rr / nq
+    return results
+

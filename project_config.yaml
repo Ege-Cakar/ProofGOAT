@@ -13,3 +13,18 @@ extract:
   batch_size: 2
   fp16: true
   save_format: "parquet"  # parquet|npz
+
+neural_ot:
+  hidden_dim: 4096
+  time_embed_dim: 128
+  num_layers: 3
+  mlp_width: 2048
+  max_len: 256
+  batch_size: 8
+  num_epochs: 5
+  learning_rate: 1e-4
+  num_steps: 8
+  lambda_cycle: 0.0
+  nl_embeddings: "outputs/nl_embeddings.parquet"
+  lean_embeddings: "outputs/lean_embeddings.parquet"
+  output_dir: "outputs/neural_ot"
