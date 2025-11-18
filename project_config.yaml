@@ -28,3 +28,6 @@ neural_ot:
   nl_embeddings: "outputs/nl_embeddings.parquet"
   lean_embeddings: "outputs/lean_embeddings.parquet"
   output_dir: "outputs/neural_ot"
+  use_film: true
+  pos_embed_dim: 128
+  film_hidden: 256

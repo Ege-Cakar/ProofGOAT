@@ -17,6 +17,9 @@ class NeuralOTFlow(nn.Module):
         time_embed_dim: int = 128,
         num_layers: int = 3,
         mlp_width: int = 2048,
+        use_film: bool = False,
+        pos_embed_dim: int = 128,
+        film_hidden: int = 256,
     ) -> None:
         super().__init__()
         self.v_theta = VelocityField(
@@ -24,6 +27,9 @@ class NeuralOTFlow(nn.Module):
             time_embed_dim=time_embed_dim,
             num_layers=num_layers,
             mlp_width=mlp_width,
+            use_film=use_film,
+            pos_embed_dim=pos_embed_dim,
+            film_hidden=film_hidden,
         )
 
     def forward(self, h: torch.Tensor, num_steps: int = 10, direction: str = "forward") -> torch.Tensor:
