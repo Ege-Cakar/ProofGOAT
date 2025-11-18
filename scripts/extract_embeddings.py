@@ -120,9 +120,17 @@ def main(cfg):
         save_npz(embed_lean, os.path.join(out_dir, "lean_embeddings.npz"))
         print("Saved NPZ embeddings.")
     else:
-        save_parquet(embed_nl, os.path.join(out_dir, "nl_embeddings.parquet"))
-        save_parquet(embed_lean, os.path.join(out_dir, "lean_embeddings.parquet"))
-        print("Saved Parquet embeddings.")
+        # Minimal change: pool to fixed-size per-example vectors before Parquet saving
+        def mean_pool(obj_array):
+            # obj_array is a list/array of [T_i, H] arrays
+            pooled = [arr.mean(axis=0) for arr in obj_array]
+            return np.stack([p.astype(np.float32, copy=False) for p in pooled], axis=0)
+
+        pooled_nl = mean_pool(embed_nl)
+        pooled_lean = mean_pool(embed_lean)
+        save_parquet(pooled_nl, os.path.join(out_dir, "nl_embeddings.parquet"))
+        save_parquet(pooled_lean, os.path.join(out_dir, "lean_embeddings.parquet"))
+        print("Saved Parquet pooled embeddings.")
 
     print("Done.")
 
