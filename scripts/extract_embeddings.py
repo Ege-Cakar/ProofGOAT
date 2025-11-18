@@ -54,7 +54,7 @@ def main(cfg):
     pairs = read_jsonl(data_path)
     # Randomly select a subset of 5000 examples (or fewer if dataset smaller)
     rng = random.Random(42)
-    k = min(5000, len(pairs))
+    k = min(1000, len(pairs))
     idxs = rng.sample(range(len(pairs)), k)
     subset = [pairs[i] for i in idxs]
     nl_texts = [ex["nl_proof"] for ex in subset]
@@ -127,8 +127,8 @@ def main(cfg):
             {"id": subset[i].get("id"), "hidden": arr.astype(np.float32).tolist()}
             for i, arr in enumerate(embed_lean)
         ]
-        save_parquet(nl_records, os.path.join(out_dir, "nl_embeddings.parquet"))
-        save_parquet(lean_records, os.path.join(out_dir, "lean_embeddings.parquet"))
+        save_parquet(nl_records, os.path.join(out_dir, "herald_nl_embeddings.parquet"))
+        save_parquet(lean_records, os.path.join(out_dir, "herald_lean_embeddings.parquet"))
         print("Saved Parquet embeddings.")
 
     print("Done.")

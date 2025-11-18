@@ -3,13 +3,13 @@ data:
   out_dir: "outputs/"
 
 models:
-  nl_model: "AI-MO/Kimina-Prover-Distill-8B"
-  lean_model: "AI-MO/Kimina-Prover-Distill-8B"
+  nl_model: "deepseek-ai/DeepSeek-Prover-V2-7B"
+  lean_model: "deepseek-ai/DeepSeek-Prover-V2-7B"
 
 extract:
   nl_layer: -1
   lean_layer: -1
-  max_length: 2048
+  max_length: 4096
   batch_size: 2
   fp16: true
   save_format: "parquet"  # parquet|npz
