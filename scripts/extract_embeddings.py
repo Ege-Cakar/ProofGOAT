@@ -5,6 +5,8 @@ import yaml
 import numpy as np
 import torch
 import random
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 # Resolve project root
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -118,18 +120,31 @@ def main(cfg):
         save_npz(lean_dict, os.path.join(out_dir, "lean_embeddings.npz"))
         print("Saved NPZ embeddings.")
     else:
-        # Save variable-length token embeddings as nested lists per example
-        nl_records = [
-            {"id": subset[i].get("id"), "hidden": arr.astype(np.float32).tolist()}
-            for i, arr in enumerate(embed_nl)
-        ]
-        lean_records = [
-            {"id": subset[i].get("id"), "hidden": arr.astype(np.float32).tolist()}
-            for i, arr in enumerate(embed_lean)
-        ]
-        save_parquet(nl_records, os.path.join(out_dir, "herald_nl_embeddings.parquet"))
-        save_parquet(lean_records, os.path.join(out_dir, "herald_lean_embeddings.parquet"))
-        print("Saved Parquet embeddings.")
+        # Batched Parquet writes to limit RAM. Each row: id, hidden (list<list<float32>>)
+        nl_path = os.path.join(out_dir, "nl_embeddings.parquet")
+        lean_path = os.path.join(out_dir, "lean_embeddings.parquet")
+        save_batch_size = int(cfg.get("extract", {}).get("save_batch_size", 1024))
+
+        def write_parquet_batched(arr_list, id_list, out_path):
+            writer = None
+            n = len(arr_list)
+            for start in range(0, n, save_batch_size):
+                end = min(start + save_batch_size, n)
+                ids = [str(id_list[i]) for i in range(start, end)]
+                hidden = [arr.astype(np.float32).tolist() for arr in arr_list[start:end]]
+                col_id = pa.array(ids, type=pa.string())
+                col_hidden = pa.array(hidden, type=pa.list_(pa.list_(pa.float32())))
+                tbl = pa.Table.from_arrays([col_id, col_hidden], names=["id", "hidden"])
+                if writer is None:
+                    writer = pq.ParquetWriter(out_path, schema=tbl.schema)
+                writer.write_table(tbl)
+            if writer is not None:
+                writer.close()
+
+        ids = [ex.get("id") for ex in subset]
+        write_parquet_batched(embed_nl, ids, nl_path)
+        write_parquet_batched(embed_lean, ids, lean_path)
+        print("Saved Parquet embeddings (batched writes).")
 
     print("Done.")
 
