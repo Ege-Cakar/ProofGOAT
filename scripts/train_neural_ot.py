@@ -32,22 +32,40 @@ def main(cfg):
     out_dir = neo_cfg.get("output_dir", os.path.join(cfg["data"]["out_dir"], "neural_ot"))
     ensure_dir(out_dir)
 
-    max_len = neo_cfg.get("max_len", 256)
-    batch_size = neo_cfg.get("batch_size", 8)
-    num_epochs = neo_cfg.get("num_epochs", 5)
-    lr = neo_cfg.get("learning_rate", 1e-4)
-    hidden_dim = neo_cfg.get("hidden_dim", 4096)
-    time_embed_dim = neo_cfg.get("time_embed_dim", 128)
-    num_layers = neo_cfg.get("num_layers", 3)
-    mlp_width = neo_cfg.get("mlp_width", 2048)
-    use_film = neo_cfg.get("use_film", False)
-    pos_embed_dim = neo_cfg.get("pos_embed_dim", 128)
-    film_hidden = neo_cfg.get("film_hidden", 256)
-    num_steps = neo_cfg.get("num_steps", 8)
-    lambda_cycle = neo_cfg.get("lambda_cycle", 0.0)
+    # Load hyperparameters with safe type coercion and helpful errors
+    def _get(cfg, k, default, cast):
+        val = cfg.get(k, default)
+        try:
+            return cast(val)
+        except Exception:
+            raise SystemExit(f"Invalid type for config key '{k}': got {val!r}, expected {cast.__name__}")
+
+    max_len = _get(neo_cfg, "max_len", 256, int)
+    batch_size = _get(neo_cfg, "batch_size", 8, int)
+    num_epochs = _get(neo_cfg, "num_epochs", 5, int)
+    lr = _get(neo_cfg, "learning_rate", 1e-4, float)
+    hidden_dim = _get(neo_cfg, "hidden_dim", 4096, int)
+    time_embed_dim = _get(neo_cfg, "time_embed_dim", 128, int)
+    num_layers = _get(neo_cfg, "num_layers", 3, int)
+    mlp_width = _get(neo_cfg, "mlp_width", 2048, int)
+    use_film = _get(neo_cfg, "use_film", False, lambda x: bool(x))
+    pos_embed_dim = _get(neo_cfg, "pos_embed_dim", 128, int)
+    film_hidden = _get(neo_cfg, "film_hidden", 256, int)
+    num_steps = _get(neo_cfg, "num_steps", 8, int)
+    lambda_cycle = _get(neo_cfg, "lambda_cycle", 0.0, float)
 
     ds = EmbeddingPairDataset(nl_path, lean_path, max_len=max_len)
     dl = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+
+    # Ensure model hidden_dim matches embedding dimension from dataset
+    try:
+        sample_h_nl, _ = ds[0]
+        emb_dim = int(sample_h_nl.shape[1])
+    except Exception:
+        emb_dim = hidden_dim
+    if hidden_dim != emb_dim:
+        print(f"Warning: config.hidden_dim={hidden_dim} does not match dataset embedding dim={emb_dim}. Using dataset dim.")
+        hidden_dim = emb_dim
 
     # instantiate model
     model = NeuralOTFlow(
@@ -110,5 +128,8 @@ if __name__ == "__main__":
 
     with open(args.config, "r") as f:
         cfg = yaml.safe_load(f)
+
+    if cfg is None:
+        raise SystemExit(f"Config file '{args.config}' is empty or not valid YAML. Please provide a valid config.")
 
     main(cfg)

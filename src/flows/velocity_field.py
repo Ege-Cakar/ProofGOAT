@@ -164,6 +164,18 @@ class VelocityField(nn.Module):
 
             cond = torch.cat([time_emb, pos_emb], dim=-1)
             film_out = self.film_mlp(cond)
+            # film_out may have shape [B*L, 2 * film_dim]. We need gamma/beta sized to match token dim d.
+            # If sizes don't match, lazily project to 2*d to ensure compatibility.
+            if film_out.shape[1] != 2 * d:
+                proj_name = "film_projector"
+                # create or reuse a projector mapping film_out_dim -> 2*d
+                if not hasattr(self, proj_name) or getattr(self, proj_name).in_features != film_out.shape[1] or getattr(self, proj_name).out_features != 2 * d:
+                    projector = nn.Linear(film_out.shape[1], 2 * d)
+                    nn.init.zeros_(projector.weight)
+                    nn.init.zeros_(projector.bias)
+                    setattr(self, proj_name, projector)
+                film_out = getattr(self, proj_name)(film_out)
+
             gamma, beta = film_out.chunk(2, dim=-1)
             # reshape to [B, L, d]
             gamma = gamma.view(B, L, d)

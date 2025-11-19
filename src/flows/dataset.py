@@ -53,18 +53,25 @@ class EmbeddingPairDataset(Dataset):
         if path.endswith(".parquet") or path.endswith(".parq"):
             df = pd.read_parquet(path)
             records = []
-            for i, row in df.iterrows():
+            for _, row in df.iterrows():
                 rec = {}
-                # allow either 'hidden' or 'embedding' column
-                if "hidden" in row:
+
+                # Case 1: there is an explicit "hidden" column (already [L, d] or [d])
+                if "hidden" in df.columns:
                     rec["hidden"] = np.asarray(row["hidden"], dtype=np.float32)
-                elif "embedding" in row:
-                    # fixed-size list column
-                    rec["hidden"] = np.asarray(row["embedding"].to_numpy(), dtype=np.float32)
+
+                # Case 2: there is a single "embedding" column
+                elif "embedding" in df.columns:
+                    rec["hidden"] = np.asarray(row["embedding"], dtype=np.float32)
+
                 else:
-                    # try to interpret first column
-                    rec["hidden"] = np.asarray(row.iloc[0], dtype=np.float32)
-                rec["id"] = row.get("id", None)
+                    # Generic case: each column is a token embedding (list[float])
+                    # e.g. columns 0..211, each is length d=2048
+                    tokens = [np.asarray(v, dtype=np.float32) for v in row.values]
+                    rec["hidden"] = np.stack(tokens, axis=0)  # shape [L, d]
+
+                # Optional id column
+                rec["id"] = row["id"] if "id" in df.columns else None
                 records.append(rec)
             return records
 
@@ -88,8 +95,8 @@ class EmbeddingPairDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
         rec_nl, rec_lean = self.pairs[idx]
-        h_nl = np.asarray(rec_nl["hidden"], dtype=np.float32)
-        h_lean = np.asarray(rec_lean["hidden"], dtype=np.float32)
+        h_nl = np.asarray(rec_nl["hidden"], dtype=np.float32).copy()
+        h_lean = np.asarray(rec_lean["hidden"], dtype=np.float32).copy()
 
         L = min(h_nl.shape[0], h_lean.shape[0])
         if self.max_len is not None:
@@ -104,11 +111,26 @@ class EmbeddingPairDataset(Dataset):
 def collate_fn(batch):
     """Collate function stacks pairs into tensors [B, L, d]"""
     h_nl_list, h_lean_list = zip(*batch)
-    # assume same L across batch (dataset truncates)
-    L = min(x.shape[0] for x in h_nl_list)
-    d = h_nl_list[0].shape[1]
-    B = len(h_nl_list)
+    # Ensure each item is 2D (L, d). If an item is 1D, treat as (1, d).
+    proc_nl = []
+    proc_lean = []
+    for x in h_nl_list:
+        if x.dim() == 1:
+            proc_nl.append(x.unsqueeze(0))
+        else:
+            proc_nl.append(x)
+    for x in h_lean_list:
+        if x.dim() == 1:
+            proc_lean.append(x.unsqueeze(0))
+        else:
+            proc_lean.append(x)
 
-    h_nl = torch.stack([x[:L] for x in h_nl_list], dim=0)
-    h_lean = torch.stack([x[:L] for x in h_lean_list], dim=0)
+    # compute common L and d
+    L = min(x.shape[0] for x in proc_nl)
+    L = min(L, min(x.shape[0] for x in proc_lean))
+    d = proc_nl[0].shape[1]
+    B = len(proc_nl)
+
+    h_nl = torch.stack([x[:L] for x in proc_nl], dim=0)
+    h_lean = torch.stack([x[:L] for x in proc_lean], dim=0)
     return h_nl, h_lean
