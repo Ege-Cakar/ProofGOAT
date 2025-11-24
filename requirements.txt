@@ -4,7 +4,7 @@ torchvision==0.17.2
 
 transformers==4.39.3
 accelerate==0.28.0
-huggingface-hub==0.20.3
+huggingface-hub==0.21.2
 
 numpy==1.26.4
 pandas==2.2.0
@@ -13,6 +13,7 @@ pyarrow==14.0.2
 mlcroissant==1.0.4
 requests==2.32.3
 tqdm==4.66.4
+datasets==2.19.0
 
 safetensors==0.4.2
 protobuf==4.25.3
