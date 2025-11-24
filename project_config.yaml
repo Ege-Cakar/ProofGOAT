@@ -1,5 +1,6 @@
 data:
   input_jsonl: "data/herald_pairs.jsonl"    # [{"id": "...", "nl_proof": "...", "lean_proof": "..."}]
+  input_jsonl_with_text: "data/herald_pairs_with_text.jsonl"    # [{"id": "...", "nl_text": "...", "lean_text": "...", "nl_proof": "...", "lean_proof": "..."}]
   out_dir: "outputs/"
 
 models:

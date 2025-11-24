@@ -225,8 +225,8 @@ def decode_text(informal_statement: str, informal_proof: str, cfg: dict, example
 
 def main(cfg: dict):
 
-    id = 0
-    pairs = read_jsonl(cfg["data"]["input_jsonl"])
+    id = 0 # test with the first example
+    pairs = read_jsonl(cfg["data"]["input_jsonl_with_text"])
 
     nl_text = pairs[id]["nl_text"]
     nl_proof = pairs[id]["nl_proof"]

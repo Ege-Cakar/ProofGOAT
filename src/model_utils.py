@@ -47,7 +47,7 @@ def load_model_and_tokenizer(model_name, fp16, causal: bool = False):
     try:
         model = model_class.from_pretrained(
             model_name,
-            torch_dtype=dtype,
+            dtype=dtype,
             low_cpu_mem_usage=False,
             trust_remote_code=True,
             device_map="auto" if use_cuda else None,
@@ -58,7 +58,7 @@ def load_model_and_tokenizer(model_name, fp16, causal: bool = False):
         if "rope_scaling" in str(e):
             model = model_class.from_pretrained(
                 model_name,
-                torch_dtype=dtype,
+                dtype=dtype,
                 low_cpu_mem_usage=False,
                 trust_remote_code=True,
                 device_map="auto" if use_cuda else None,
