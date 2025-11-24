@@ -4,8 +4,8 @@ data:
   out_dir: "outputs/"
 
 models:
-  nl_model: "AI-MO/Kimina-Prover-Distill-8B"
-  lean_model: "AI-MO/Kimina-Prover-Distill-8B"
+  nl_model: "AI-MO/Kimina-Prover-Distill-1.7B"
+  lean_model: "AI-MO/Kimina-Prover-Distill-1.7B"
 
 extract:
   nl_layer: -1
@@ -16,5 +16,5 @@ extract:
   save_format: "parquet"  # parquet|npz
 
 decode:
-  max_new_tokens: 256
+  max_new_tokens: 1024
   max_time: 60

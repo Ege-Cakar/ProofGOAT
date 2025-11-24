@@ -6,6 +6,7 @@ import re
 import pandas as pd
 import torch
 import numpy as np
+from pathlib import Path
 
 def extract_fl_proof_betweenTags(text, TAG):
     """
@@ -84,7 +85,9 @@ def decode_text(informal_statement: str, informal_proof: str, cfg: dict, example
                        Should be a numpy array with shape [num_tokens, hidden_dim]
         verbose: Whether to print verbose output
     """
-    nl_model, nl_tokenizer = load_model_and_tokenizer(cfg["models"]["nl_model"], cfg["extract"]["fp16"], causal=True)
+    # Get local_dir from config, or None if not set
+    local_dir = cfg["models"].get("local_dir")
+    nl_model, nl_tokenizer = load_model_and_tokenizer(cfg["models"]["nl_model"], cfg["extract"]["fp16"], causal=True, local_dir=local_dir)
 
     input_text = wrap_prompt_in_query(informal_statement.strip(), informal_proof.strip(), examples, use_examples)
     if verbose:
@@ -224,7 +227,6 @@ def decode_text(informal_statement: str, informal_proof: str, cfg: dict, example
 
 
 def main(cfg: dict):
-
     id = 0 # test with the first example
     pairs = read_jsonl(cfg["data"]["input_jsonl_with_text"])
 
@@ -245,5 +247,16 @@ if __name__ == "__main__":
 
     with open(args.config, "r") as f:
         cfg = yaml.safe_load(f)
+    
+    # Set up local_dir for models if not specified in config
+    # Use relative path based on current working directory
+    if "models" not in cfg:
+        cfg["models"] = {}
+    if "local_dir" not in cfg["models"] or cfg["models"]["local_dir"] is None:
+        # Get current working directory and create models subdirectory path
+        cwd = Path.cwd()
+        models_dir = cwd / "cached_models"
+        cfg["models"]["local_dir"] = str(models_dir.resolve())
+        print(f"Setting models local_dir to: {cfg['models']['local_dir']}")
 
     main(cfg)

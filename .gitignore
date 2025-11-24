@@ -90,3 +90,11 @@ torch_cache/
 build/
 dist/
 *.egg-info/
+
+
+# ----------------------------
+# Branch specific files
+# ----------------------------
+create_env.sh
+data/herald_pairs_with_text.jsonl
+cached_models/
