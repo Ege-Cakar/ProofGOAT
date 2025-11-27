@@ -1,0 +1,7 @@
+{
+  "total_steps": 2,
+  "total_epochs": 2,
+  "final_loss": 0.536038875579834,
+  "best_loss": 0.536038875579834,
+  "run_dir": "outputs/neural_ot_test/run_20251127_105719"
+}

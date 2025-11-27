@@ -1,0 +1,75 @@
+================================================================================
+HERMES Neural OT Training Analysis Report
+================================================================================
+
+RUN INFORMATION
+--------------------------------------------------------------------------------
+Run Directory: outputs/neural_ot_test/run_20251127_105719
+Total Steps: N/A
+Total Epochs: N/A
+Final Loss: N/A
+Best Loss: N/A
+
+CONFIGURATION
+--------------------------------------------------------------------------------
+{
+  "neural_ot": {
+    "hidden_dim": 2048,
+    "time_embed_dim": 128,
+    "num_layers": 3,
+    "mlp_width": 2048,
+    "max_len": 256,
+    "batch_size": 4,
+    "num_epochs": 1,
+    "learning_rate": "1e-4",
+    "num_steps": 4,
+    "lambda_cycle": 0.0,
+    "nl_embeddings": "outputs/nl_embeddings.parquet",
+    "lean_embeddings": "outputs/lean_embeddings.parquet",
+    "output_dir": "outputs/neural_ot_test",
+    "log_every": 1,
+    "eval_every": 10,
+    "save_every": 10
+  },
+  "data": {
+    "input_jsonl": "data/herald_pairs.jsonl",
+    "out_dir": "outputs/"
+  },
+  "models": {
+    "nl_model": "AI-MO/Kimina-Prover-Distill-8B",
+    "lean_model": "AI-MO/Kimina-Prover-Distill-8B"
+  }
+}
+
+
+
+TRANSPORT QUALITY SUMMARY
+--------------------------------------------------------------------------------
+
+Initial Epoch:
+  transport/nl_to_lean_distance: 4.878191
+  transport/lean_to_nl_distance: 4.830386
+  transport/cycle_error: 0.952344
+  transport/original_similarity: 0.987966
+  transport/transported_similarity: 0.928763
+  transport/similarity_improvement: -0.059203
+
+Final Epoch:
+  transport/nl_to_lean_distance: 4.878191
+  transport/lean_to_nl_distance: 4.830386
+  transport/cycle_error: 0.952344
+  transport/original_similarity: 0.987966
+  transport/transported_similarity: 0.928763
+  transport/similarity_improvement: -0.059203
+
+Improvement:
+  transport/nl_to_lean_distance: +0.000000
+  transport/lean_to_nl_distance: +0.000000
+  transport/cycle_error: +0.000000
+  transport/original_similarity: +0.000000
+  transport/transported_similarity: +0.000000
+  transport/similarity_improvement: +0.000000
+
+================================================================================
+End of Report
+================================================================================

@@ -172,7 +172,7 @@ class ResultsLogger:
             velocity_norms = []
             for t_val in np.linspace(0, 1, num_time_points):
                 t = torch.full((B, L), t_val, device=device, dtype=x_samples.dtype)
-                v = model.v_theta(x_samples, t, p=None)
+                v = model.v_theta(x_samples, t)
                 v_norm = torch.norm(v, dim=-1).mean().item()
                 velocity_norms.append(v_norm)
 
@@ -313,6 +313,7 @@ def main(cfg, use_wandb=True, wandb_project=None, wandb_entity=None):
     time_embed_dim = int(neo_cfg.get("time_embed_dim", 128))
     num_layers = int(neo_cfg.get("num_layers", 3))
     mlp_width = int(neo_cfg.get("mlp_width", 2048))
+    dropout = float(neo_cfg.get("dropout", 0.0))
     num_steps = int(neo_cfg.get("num_steps", 8))
     lambda_cycle = float(neo_cfg.get("lambda_cycle", 0.0))
 
@@ -344,13 +345,60 @@ def main(cfg, use_wandb=True, wandb_project=None, wandb_entity=None):
     dl = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
     print(f"Dataset size: {len(ds)} pairs")
 
+    # Compute dataset statistics for normalization
+    print("Computing dataset statistics...")
+    # We'll take a subset for speed if dataset is huge, but here we can do full pass or large sample
+    # For simplicity, let's take a large random sample or iterate once
+    
+    # Simple estimation using first N batches
+    n_samples = 0
+    nl_sum = torch.zeros(hidden_dim)
+    nl_sq_sum = torch.zeros(hidden_dim)
+    lean_sum = torch.zeros(hidden_dim)
+    lean_sq_sum = torch.zeros(hidden_dim)
+    
+    # Use a separate loader for stats to avoid messing up main training order if needed, 
+    # but here we can just iterate a bit.
+    # Actually, let's just use the first 100 batches to estimate stats
+    stats_dl = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+    
+    for i, (h_nl, h_lean) in enumerate(stats_dl):
+        if i >= 100: break
+        
+        # Flatten [B, L, d] -> [B*L, d]
+        h_nl_flat = h_nl.reshape(-1, hidden_dim)
+        h_lean_flat = h_lean.reshape(-1, hidden_dim)
+        
+        n_samples += h_nl_flat.shape[0]
+        
+        nl_sum += h_nl_flat.sum(dim=0)
+        nl_sq_sum += (h_nl_flat ** 2).sum(dim=0)
+        
+        lean_sum += h_lean_flat.sum(dim=0)
+        lean_sq_sum += (h_lean_flat ** 2).sum(dim=0)
+        
+    src_mean = nl_sum / n_samples
+    src_std = torch.sqrt((nl_sq_sum / n_samples) - src_mean ** 2)
+    
+    tgt_mean = lean_sum / n_samples
+    tgt_std = torch.sqrt((lean_sq_sum / n_samples) - tgt_mean ** 2)
+    
+    print(f"Stats computed on {n_samples} tokens.")
+    print(f"NL Mean norm: {src_mean.norm().item():.4f}, Std mean: {src_std.mean().item():.4f}")
+    print(f"Lean Mean norm: {tgt_mean.norm().item():.4f}, Std mean: {tgt_std.mean().item():.4f}")
+
     # Instantiate model
     print(f"Initializing model with hidden_dim={hidden_dim}, num_layers={num_layers}")
     model = NeuralOTFlow(
         hidden_dim=hidden_dim,
         time_embed_dim=time_embed_dim,
         num_layers=num_layers,
-        mlp_width=mlp_width
+        mlp_width=mlp_width,
+        dropout=dropout,
+        src_mean=src_mean,
+        src_std=src_std,
+        tgt_mean=tgt_mean,
+        tgt_std=tgt_std
     )
     model = model.to(device)
 

@@ -7,16 +7,14 @@ def flow_matching_loss(
     x0: torch.Tensor,
     x1: torch.Tensor,
     t_sample: str = "per_token",
-    p: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    """Flow matching loss with positional embeddings.
+    """Flow matching loss.
 
     Args:
-        v_theta: Velocity field model with signature v_theta(x, t, p)
+        v_theta: Velocity field model with signature v_theta(x, t)
         x0: Source embeddings [B, L, d] (e.g., NL)
         x1: Target embeddings [B, L, d] (e.g., Lean)
         t_sample: 'per_token' or 'per_batch' controlling sampling granularity
-        p: Positional embeddings [B, L, d]. If None, computed by v_theta.
 
     Returns:
         Flow matching loss (MSE between predicted and target velocity)
@@ -36,7 +34,7 @@ def flow_matching_loss(
     v_target = x1 - x0
 
     # Predicted velocity from the model
-    v_pred = v_theta(x_t, t, p)
+    v_pred = v_theta(x_t, t)
 
     # MSE loss
     loss = torch.mean((v_pred - v_target) ** 2)
@@ -47,7 +45,6 @@ def cycle_consistency_loss(
     neural_ot,
     x: torch.Tensor,
     num_steps: int = 8,
-    p: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
     """Forward then backward cycle loss: MSE(x, back(forward(x))).
 
@@ -55,11 +52,10 @@ def cycle_consistency_loss(
         neural_ot: NeuralOTFlow model
         x: Token embeddings [B, L, d]
         num_steps: Number of integration steps
-        p: Positional embeddings [B, L, d]
 
     Returns:
         Cycle consistency loss
     """
-    x_fwd = neural_ot.transport_nl_to_lean(x, num_steps=num_steps, p=p)
-    x_rec = neural_ot.transport_lean_to_nl(x_fwd, num_steps=num_steps, p=p)
+    x_fwd = neural_ot.transport_nl_to_lean(x, num_steps=num_steps)
+    x_rec = neural_ot.transport_lean_to_nl(x_fwd, num_steps=num_steps)
     return torch.mean((x - x_rec) ** 2)

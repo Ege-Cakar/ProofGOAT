@@ -112,6 +112,12 @@ class EmbeddingPairDataset(Dataset):
         h_nl = np.asarray(rec_nl["hidden"], dtype=np.float32)
         h_lean = np.asarray(rec_lean["hidden"], dtype=np.float32)
 
+        # Ensure 2D [L, d]
+        if h_nl.ndim == 1:
+            h_nl = h_nl[None, :]
+        if h_lean.ndim == 1:
+            h_lean = h_lean[None, :]
+
         L = min(h_nl.shape[0], h_lean.shape[0])
         if self.max_len is not None:
             L = min(L, self.max_len)
