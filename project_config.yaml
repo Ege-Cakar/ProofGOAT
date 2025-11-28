@@ -15,16 +15,34 @@ extract:
   save_format: "parquet"  # parquet|npz
 
 neural_ot:
-  hidden_dim: 4096
-  time_embed_dim: 128
-  num_layers: 3
-  mlp_width: 2048
-  max_len: 256
-  batch_size: 8
-  num_epochs: 5
+  # Model architecture
+  hidden_dim: 2048          # Must match embedding dimension from LLM
+  time_embed_dim: 256
+  num_layers: 6
+  mlp_width: 8192           # ~300M params - good for H100
+  
+  # Training
+  max_len: 256              # Full sequence length
+  batch_size: 128           # H100 can handle this easily
+  num_epochs: 10            # More epochs for overnight
   learning_rate: 1e-4
   num_steps: 8
-  lambda_cycle: 0.0
-  nl_embeddings: "outputs/nl_embeddings.parquet"
-  lean_embeddings: "outputs/lean_embeddings.parquet"
+  lambda_cycle: 0.0         # Disabled for now
+  
+  # OT configuration (POT library)
+  ot_method: "sinkhorn"     # "sinkhorn" (fast) or "emd" (exact)
+  ot_cost: "euclidean"      # "euclidean" or "cosine"
+  ot_reg: 0.05              # Sinkhorn regularization (lower = more exact)
+  
+  # Logging
+  log_every: 10
+  save_every: 500
+  
+  # Data paths
+  nl_embeddings: "outputs/kimina17_all_nl_embeddings.parquet"
+  lean_embeddings: "outputs/kimina17_all_lean_embeddings.parquet"
+  ot_shards_dir: "outputs/neural_ot/ot_shards"  # Precomputed OT shards (from compute_ot_couplings.py)
   output_dir: "outputs/neural_ot"
+  
+  # Optional: limit samples for debugging (set to null for full dataset)
+  max_samples: null
