@@ -6,6 +6,8 @@ This implements the full Augmented Optimal Transport Flow Matching framework:
 3. 4-block cost matrix (Active↔Active, Active↔Void, Void↔Active, Void↔Void)
 4. Soft ordering via positional penalty
 
+GPU-accelerated using PyTorch backend for POT's Sinkhorn.
+
 Usage:
   python -m scripts.compute_augmented_ot --config project_config.yaml
 """
@@ -19,12 +21,17 @@ from pathlib import Path
 import ot
 import json
 import gc
+import torch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 import sys
 sys.path.append(ROOT)
 
 from src.io_utils import ensure_dir
+
+# Check for GPU
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {DEVICE}")
 
 
 def get_sinusoidal_embedding(positions: np.ndarray, d: int) -> np.ndarray:
@@ -109,19 +116,19 @@ def create_augmented_state(
     return state, positions, is_active
 
 
-def compute_augmented_ot_cost(
-    src_positions: np.ndarray,  # [N_max]
-    tgt_positions: np.ndarray,  # [N_max]
-    src_active: np.ndarray,     # [N_max] bool
-    tgt_active: np.ndarray,     # [N_max] bool
-    src_embeddings: np.ndarray, # [N_max, d] (without existence channel)
-    tgt_embeddings: np.ndarray, # [N_max, d]
+def compute_augmented_ot_cost_torch(
+    src_positions: torch.Tensor,  # [N_max]
+    tgt_positions: torch.Tensor,  # [N_max]
+    src_active: torch.Tensor,     # [N_max] bool
+    tgt_active: torch.Tensor,     # [N_max] bool
+    src_embeddings: torch.Tensor, # [N_max, d] (without existence channel)
+    tgt_embeddings: torch.Tensor, # [N_max, d]
     lambda_pos: float = 1.0,    # positional penalty weight
     alpha_delete: float = 1.0,  # deletion cost
     alpha_create: float = 1.0,  # creation cost
     beta_create: float = 0.1,   # creation norm penalty
-) -> np.ndarray:
-    """Compute 4-block augmented OT cost matrix (VECTORIZED).
+) -> torch.Tensor:
+    """Compute 4-block augmented OT cost matrix (GPU VECTORIZED).
     
     Blocks:
     - Active→Active: ||a_i - b_j||^2 + λ(p_i - p_j)^2
@@ -136,11 +143,10 @@ def compute_augmented_ot_cost(
     pos_cost = lambda_pos * (pos_diff ** 2)
     
     # Semantic cost matrix [N, N] (squared Euclidean)
-    # ||a_i - b_j||^2 = ||a_i||^2 + ||b_j||^2 - 2 * a_i · b_j
-    src_norm_sq = np.sum(src_embeddings ** 2, axis=1)  # [N]
-    tgt_norm_sq = np.sum(tgt_embeddings ** 2, axis=1)  # [N]
+    src_norm_sq = torch.sum(src_embeddings ** 2, dim=1)  # [N]
+    tgt_norm_sq = torch.sum(tgt_embeddings ** 2, dim=1)  # [N]
     semantic_cost = src_norm_sq[:, None] + tgt_norm_sq[None, :] - 2 * (src_embeddings @ tgt_embeddings.T)
-    semantic_cost = np.maximum(semantic_cost, 0)  # numerical stability
+    semantic_cost = torch.clamp(semantic_cost, min=0)  # numerical stability
     
     # Block masks [N, N]
     src_active_2d = src_active[:, None]  # [N, 1]
@@ -152,22 +158,90 @@ def compute_augmented_ot_cost(
     mask_vv = ~src_active_2d & ~tgt_active_2d    # Void → Void
     
     # Build cost matrix
-    C = np.zeros((N, N), dtype=np.float64)
+    C = torch.zeros((N, N), dtype=torch.float64, device=src_positions.device)
     
     # Block 1: Active → Active
-    C += mask_aa * (semantic_cost + pos_cost)
+    C = C + mask_aa * (semantic_cost + pos_cost)
     
     # Block 2: Active → Void (deletion)
-    C += mask_av * (alpha_delete + pos_cost)
+    C = C + mask_av * (alpha_delete + pos_cost)
     
     # Block 3: Void → Active (creation)
     creation_cost = alpha_create + beta_create * tgt_norm_sq[None, :]
-    C += mask_va * (creation_cost + pos_cost)
+    C = C + mask_va * (creation_cost + pos_cost)
     
     # Block 4: Void → Void (near zero)
-    C += mask_vv * (0.01 * pos_cost)
+    C = C + mask_vv * (0.01 * pos_cost)
     
     return C
+
+
+def compute_augmented_ot_coupling_gpu(
+    src_state: np.ndarray,      # [N_max, d+1]
+    tgt_state: np.ndarray,      # [N_max, d+1]
+    src_positions: np.ndarray,  # [N_max]
+    tgt_positions: np.ndarray,  # [N_max]
+    src_active: np.ndarray,     # [N_max] bool
+    tgt_active: np.ndarray,     # [N_max] bool
+    reg: float = 0.05,
+    lambda_pos: float = 1.0,
+    alpha_delete: float = 1.0,
+    alpha_create: float = 1.0,
+    beta_create: float = 0.1,
+    device: torch.device = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute augmented OT coupling on GPU and extract permutation.
+    
+    Uses PyTorch backend for POT's Sinkhorn algorithm.
+    
+    Returns:
+        coupling: [N_max, N_max] transport plan (numpy)
+        perm: [N_max] permutation (src index i maps to tgt index perm[i])
+    """
+    if device is None:
+        device = DEVICE
+    
+    N = src_state.shape[0]
+    d = src_state.shape[1] - 1
+    
+    # Move to GPU
+    src_emb = torch.tensor(src_state[:, :d], dtype=torch.float64, device=device)
+    tgt_emb = torch.tensor(tgt_state[:, :d], dtype=torch.float64, device=device)
+    src_pos_t = torch.tensor(src_positions, dtype=torch.float64, device=device)
+    tgt_pos_t = torch.tensor(tgt_positions, dtype=torch.float64, device=device)
+    src_act_t = torch.tensor(src_active, dtype=torch.bool, device=device)
+    tgt_act_t = torch.tensor(tgt_active, dtype=torch.bool, device=device)
+    
+    # Compute 4-block cost matrix on GPU
+    C = compute_augmented_ot_cost_torch(
+        src_pos_t, tgt_pos_t,
+        src_act_t, tgt_act_t,
+        src_emb, tgt_emb,
+        lambda_pos=lambda_pos,
+        alpha_delete=alpha_delete,
+        alpha_create=alpha_create,
+        beta_create=beta_create,
+    )
+    
+    # Normalize cost
+    C = C / (C.max() + 1e-8)
+    
+    # Uniform marginals (on GPU)
+    a = torch.ones(N, dtype=torch.float64, device=device) / N
+    b = torch.ones(N, dtype=torch.float64, device=device) / N
+    
+    # Solve OT on GPU using sinkhorn_log (recommended for GPU)
+    # POT auto-detects PyTorch tensors and uses GPU backend
+    coupling = ot.bregman.sinkhorn_log(a, b, C, reg=reg, numItermax=200)
+    
+    # Extract permutation (argmax of each row)
+    perm = torch.argmax(coupling, dim=1)
+    
+    # Move back to CPU/numpy
+    coupling_np = coupling.float().cpu().numpy()
+    perm_np = perm.cpu().numpy()
+    
+    return coupling_np, perm_np
 
 
 def compute_augmented_ot_coupling(
@@ -406,7 +480,19 @@ def main():
     parser.add_argument("--alpha-create", type=float, default=1.0, help="Creation cost")
     parser.add_argument("--beta-create", type=float, default=0.1, help="Creation norm penalty")
     parser.add_argument("--reg", type=float, default=0.1, help="Sinkhorn regularization")
+    parser.add_argument("--cpu", action="store_true", help="Force CPU (disable GPU)")
     args = parser.parse_args()
+
+    # Set device
+    global DEVICE
+    if args.cpu:
+        DEVICE = torch.device('cpu')
+        print("Forcing CPU mode")
+    else:
+        DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if DEVICE.type == 'cuda':
+            print(f"GPU: {torch.cuda.get_device_name(0)}")
+            print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 
     with open(args.config, "r") as f:
         cfg = yaml.safe_load(f)
@@ -475,17 +561,20 @@ def main():
     
     # Process train set
     print("\nProcessing TRAIN set...")
+    print(f"Using GPU: {DEVICE}")
     for i in tqdm(train_indices, desc="Train OT"):
         sample_id, nl_emb, lean_emb = pairs[i]
         
         src_state, src_pos, src_active = create_augmented_state(nl_emb, args.n_max, d)
         tgt_state, tgt_pos, tgt_active = create_augmented_state(lean_emb, args.n_max, d)
         
-        coupling, perm = compute_augmented_ot_coupling(
+        # Use GPU-accelerated OT
+        coupling, perm = compute_augmented_ot_coupling_gpu(
             src_state, tgt_state, src_pos, tgt_pos, src_active, tgt_active,
             reg=args.reg, lambda_pos=args.lambda_pos,
             alpha_delete=args.alpha_delete, alpha_create=args.alpha_create,
             beta_create=args.beta_create,
+            device=DEVICE,
         )
         
         train_writer.add(sample_id, src_state, tgt_state, src_pos, tgt_pos, src_active, tgt_active, perm)
@@ -500,11 +589,13 @@ def main():
         src_state, src_pos, src_active = create_augmented_state(nl_emb, args.n_max, d)
         tgt_state, tgt_pos, tgt_active = create_augmented_state(lean_emb, args.n_max, d)
         
-        coupling, perm = compute_augmented_ot_coupling(
+        # Use GPU-accelerated OT
+        coupling, perm = compute_augmented_ot_coupling_gpu(
             src_state, tgt_state, src_pos, tgt_pos, src_active, tgt_active,
             reg=args.reg, lambda_pos=args.lambda_pos,
             alpha_delete=args.alpha_delete, alpha_create=args.alpha_create,
             beta_create=args.beta_create,
+            device=DEVICE,
         )
         
         val_writer.add(sample_id, src_state, tgt_state, src_pos, tgt_pos, src_active, tgt_active, perm)

@@ -15,24 +15,24 @@ extract:
   save_format: "parquet"  # parquet|npz
 
 neural_ot:
-  # Model architecture
+  # Model architecture (~42M params - fast training)
   hidden_dim: 2048          # Must match embedding dimension from LLM
-  time_embed_dim: 256
-  num_layers: 6
-  mlp_width: 8192           # ~300M params - good for H100
+  time_embed_dim: 64
+  num_layers: 3
+  mlp_width: 4096           # ~42M params
   
   # Training
-  max_len: 256              # Full sequence length
-  batch_size: 128           # H100 can handle this easily
-  num_epochs: 10            # More epochs for overnight
-  learning_rate: 1e-4
+  max_len: 512              
+  batch_size: 64
+  num_epochs: 10
+  learning_rate: 5e-4
   num_steps: 8
-  lambda_cycle: 0.0         # Disabled for now
+  lambda_cycle: 0.1
   
   # OT configuration (POT library)
   ot_method: "sinkhorn"     # "sinkhorn" (fast) or "emd" (exact)
   ot_cost: "euclidean"      # "euclidean" or "cosine"
-  ot_reg: 0.05              # Sinkhorn regularization (lower = more exact)
+  ot_reg: 0.05              # Sinkhorn regularizon (lower = more exact)
   
   # Logging
   log_every: 10
