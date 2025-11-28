@@ -1,0 +1,40 @@
+data:
+  input_jsonl: "data/herald_pairs.jsonl"
+  out_dir: "outputs/"
+
+models:
+  nl_model: "AI-MO/Kimina-Prover-Distill-8B"
+  lean_model: "AI-MO/Kimina-Prover-Distill-8B"
+
+extract:
+  nl_layer: -1
+  lean_layer: -1
+  max_length: 2048
+  batch_size: 2
+  fp16: true
+  save_format: "parquet"
+
+neural_ot:
+  hidden_dim: 4098
+  time_embed_dim: 128
+  num_layers: 3
+  mlp_width: 4098
+  dropout: 0.1
+  max_len: 256
+  batch_size: 8
+  num_epochs: 5
+  learning_rate: 1e-4
+  weight_decay: 1e-4
+  max_grad_norm: 1.0
+  num_steps: 8
+  lambda_cycle: 1.0
+  loss_type: "flow_matching" # Options: "flow_matching", "sinkhorn"
+  sinkhorn_reg: 0.1
+  # Point specifically to the large files
+  nl_embeddings: "outputs/dsv2_1000_herald_nl_embeddings.parquet"
+  lean_embeddings: "outputs/dsv2_1000_herald_lean_embeddings.parquet"
+  output_dir: "outputs/neural_ot_large"
+  streaming: true
+  log_every: 10
+  eval_every: 100
+  save_every: 500

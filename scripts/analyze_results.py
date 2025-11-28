@@ -67,11 +67,20 @@ class ResultsAnalyzer:
 
         # Extract metrics (try both with and without namespace prefixes)
         steps = self.metrics_history.get('step', [])
-        train_loss = self.metrics_history.get('loss', self.metrics_history.get('train_loss', []))
-        fm_loss = self.metrics_history.get('flow_matching_loss', [])
-        cycle_loss = self.metrics_history.get('cycle_loss', [])
-        lr = self.metrics_history.get('learning_rate', [])
-        grad_norm = self.metrics_history.get('grad_norm', [])
+        
+        # Helper to find key with variants
+        def get_metric(base_key):
+            variants = [base_key, f"train/{base_key}", f"val/{base_key}", base_key.replace("loss", "_loss")]
+            for k in variants:
+                if k in self.metrics_history:
+                    return self.metrics_history[k]
+            return []
+
+        train_loss = get_metric('loss')
+        fm_loss = get_metric('fm_loss')
+        cycle_loss = get_metric('cycle_loss')
+        lr = get_metric('learning_rate')
+        grad_norm = get_metric('grad_norm')
 
         # Plot 1: Total loss
         if train_loss:

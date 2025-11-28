@@ -40,12 +40,30 @@ def download_folder(dbx, dbx_folder, local_folder):
         result = dbx.files_list_folder_continue(result.cursor)
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--token", help="Dropbox access token", default=ACCESS_TOKEN)
+    args = parser.parse_args()
+
+    token = args.token
+    
     print("Connecting to Dropbox...")
     try:
-        dbx = dropbox.Dropbox(ACCESS_TOKEN)
+        dbx = dropbox.Dropbox(token)
         # Check user
         account = dbx.users_get_current_account()
         print(f"Connected as: {account.name.display_name}")
+    except dropbox.exceptions.AuthError as e:
+        print(f"Authentication failed: {e}")
+        print("\n" + "="*60)
+        print("ERROR: The provided access token is expired or invalid.")
+        print("Please generate a new access token:")
+        print("1. Go to https://www.dropbox.com/developers/apps")
+        print("2. Select your app")
+        print("3. Generate a new 'Generated access token'")
+        print("4. Run this script with: python -m scripts.download_data --token YOUR_NEW_TOKEN")
+        print("="*60 + "\n")
+        return
     except Exception as e:
         print(f"Connection failed: {e}")
         return

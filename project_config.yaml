@@ -26,6 +26,6 @@ neural_ot:
   learning_rate: 1e-4
   num_steps: 8
   lambda_cycle: 0.0
-  nl_embeddings: "outputs/nl_embeddings.parquet"
-  lean_embeddings: "outputs/lean_embeddings.parquet"
+  nl_embeddings: "outputs"
+  lean_embeddings: "outputs"
   output_dir: "outputs/neural_ot"

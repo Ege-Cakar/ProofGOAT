@@ -309,13 +309,14 @@ def main(cfg, use_wandb=True, wandb_project=None, wandb_entity=None):
     batch_size = int(neo_cfg.get("batch_size", 8))
     num_epochs = int(neo_cfg.get("num_epochs", 5))
     lr = float(neo_cfg.get("learning_rate", 1e-4))
-    hidden_dim = int(neo_cfg.get("hidden_dim", 4096))
+    hidden_dim = int(neo_cfg.get("hidden_dim", 2048))
     time_embed_dim = int(neo_cfg.get("time_embed_dim", 128))
     num_layers = int(neo_cfg.get("num_layers", 3))
     mlp_width = int(neo_cfg.get("mlp_width", 2048))
     dropout = float(neo_cfg.get("dropout", 0.0))
     num_steps = int(neo_cfg.get("num_steps", 8))
     lambda_cycle = float(neo_cfg.get("lambda_cycle", 0.0))
+    streaming = neo_cfg.get("streaming", False)
 
     # Scheduler configuration
     warmup_steps_config = neo_cfg.get("warmup_steps", None)
@@ -340,10 +341,17 @@ def main(cfg, use_wandb=True, wandb_project=None, wandb_entity=None):
     )
 
     # Load dataset
-    print(f"Loading dataset from {nl_path} and {lean_path}")
-    ds = EmbeddingPairDataset(nl_path, lean_path, max_len=max_len)
-    dl = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
-    print(f"Dataset size: {len(ds)} pairs")
+    print(f"Loading dataset from {nl_path} and {lean_path} (streaming={streaming})")
+    ds = EmbeddingPairDataset(nl_path, lean_path, max_len=max_len, streaming=streaming)
+    
+    # For streaming datasets, shuffle must be False in DataLoader
+    shuffle = not streaming
+    dl = DataLoader(ds, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
+    
+    if not streaming:
+        print(f"Dataset size: {len(ds)} pairs")
+    else:
+        print("Dataset size: Unknown (Streaming)")
 
     # Compute dataset statistics for normalization
     print("Computing dataset statistics...")
@@ -360,9 +368,12 @@ def main(cfg, use_wandb=True, wandb_project=None, wandb_entity=None):
     # Use a separate loader for stats to avoid messing up main training order if needed, 
     # but here we can just iterate a bit.
     # Actually, let's just use the first 100 batches to estimate stats
-    stats_dl = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+    # For streaming, we just take the first 100 batches from the stream
+    stats_dl = DataLoader(ds, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
     
     for i, (h_nl, h_lean) in enumerate(stats_dl):
+        if i == 0:
+             print(f"Input shape verification: {h_nl.shape}")
         if i >= 100: break
         
         # Flatten [B, L, d] -> [B*L, d]
@@ -413,10 +424,22 @@ def main(cfg, use_wandb=True, wandb_project=None, wandb_entity=None):
         "model/trainable_parameters": trainable_params
     })
 
-    optimizer = optim.AdamW(model.parameters(), lr=lr)
+    weight_decay = float(neo_cfg.get("weight_decay", 0.0))
+    max_grad_norm = float(neo_cfg.get("max_grad_norm", 0.0))
+
+    optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     # Learning rate scheduler: warmup + cosine decay
-    total_steps = num_epochs * len(dl)
+    # For streaming, we might not know total steps. Estimate or use fixed.
+    if streaming:
+        # Estimate total steps based on num_epochs and an assumed size or just use a large number
+        # If unknown, maybe just use a fixed number of steps per epoch for scheduling
+        # Let's assume a large dataset size for scheduling if unknown, e.g. 10000 steps
+        steps_per_epoch = 1000 # Arbitrary for streaming if unknown
+        total_steps = num_epochs * steps_per_epoch
+        print(f"Streaming mode: Estimating {steps_per_epoch} steps per epoch for scheduler.")
+    else:
+        total_steps = num_epochs * len(dl)
     if warmup_steps_config is None:
         warmup_steps = max(1, total_steps // 10)  # Default: 10% of training
     else:
@@ -443,44 +466,62 @@ def main(cfg, use_wandb=True, wandb_project=None, wandb_entity=None):
     sample_nl = sample_nl.to(device)
     sample_lean = sample_lean.to(device)
 
-    print("\n" + "="*80)
-    print("Starting training")
-    print("="*80 + "\n")
+    # Loss configuration
+    loss_type = neo_cfg.get("loss_type", "flow_matching")
+    sinkhorn_reg = float(neo_cfg.get("sinkhorn_reg", 0.1))
 
+    # Training loop
+    print(f"Starting training with {loss_type} loss...")
+    global_step = 0
+    
     for epoch in range(num_epochs):
         model.train()
-        epoch_metrics = {
-            "loss_sum": 0.0,
-            "fm_loss_sum": 0.0,
-            "cycle_loss_sum": 0.0,
-            "count": 0
-        }
-
+        epoch_loss = 0.0
+        epoch_fm = 0.0
+        epoch_cycle = 0.0
+        epoch_count = 0
+        
         for i, (h_nl, h_lean) in enumerate(dl):
             h_nl = h_nl.to(device)
             h_lean = h_lean.to(device)
-
+            
             optimizer.zero_grad()
+            
+            if loss_type == "flow_matching":
+                # Standard Flow Matching Loss (Regression to straight line)
+                loss = model.compute_flow_matching_loss(h_nl, h_lean) # Assuming this is the correct method
+                l_fm = loss.item()
+            elif loss_type == "sinkhorn":
+                # Sinkhorn Loss (Distribution matching at t=1)
+                # We transport h_nl to t=1 and compare with h_lean using Sinkhorn
+                # Note: This requires integrating the flow during training, which is expensive!
+                # But it uses the POT library as requested.
+                
+                # Transport NL -> Lean (t=0 -> t=1)
+                h_pred = model.transport_nl_to_lean(h_nl, num_steps=num_steps)
+                
+                # Compute Sinkhorn distance between predicted batch and target batch
+                from src.flows.losses import sinkhorn_loss
+                loss = sinkhorn_loss(h_pred, h_lean, reg=sinkhorn_reg)
+                l_fm = loss.item() # Log as 'fm' for consistency
+            else:
+                raise ValueError(f"Unknown loss type: {loss_type}")
 
-            # Flow matching loss
-            l_fm = model.compute_flow_matching_loss(h_nl, h_lean)
-            loss = l_fm
-
-            # Cycle consistency loss (optional)
+            # Cycle Consistency Loss
             l_cycle = 0.0
-            if lambda_cycle > 0.0:
+            if lambda_cycle > 0:
                 l_cycle_tensor = cycle_consistency_loss(model, h_nl, num_steps=num_steps)
                 loss = loss + lambda_cycle * l_cycle_tensor
                 l_cycle = l_cycle_tensor.item()
-
+            
             loss.backward()
-
-            # Compute gradient norm before clipping
-            grad_norm = compute_grad_norm(model)
-
-            # Optional: Gradient clipping
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
+            
+            # Gradient clipping
+            if max_grad_norm > 0:
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+            else:
+                grad_norm = compute_grad_norm(model) # Compute if not clipping, for logging purposes
+                
             optimizer.step()
             scheduler.step()
 
@@ -547,6 +588,7 @@ def main(cfg, use_wandb=True, wandb_project=None, wandb_entity=None):
         # Log epoch-level metrics
         logger.log_metrics({
             "train/epoch_loss": epoch_loss,
+            "train/loss": epoch_loss,  # Ensure 'loss' is available even if steps were skipped
             "train/epoch_fm_loss": epoch_fm,
             "train/epoch_cycle_loss": epoch_cycle
         }, step=global_step, epoch=epoch+1)
