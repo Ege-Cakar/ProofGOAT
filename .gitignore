@@ -98,3 +98,4 @@ dist/
 create_env.sh
 data/herald_pairs_with_text.jsonl
 cached_models/
+outputs/*

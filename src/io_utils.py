@@ -49,6 +49,128 @@ def load_embedding(path: str, id: int):
     Returns:
         Embedding as a list of floats
     """
-    df = pd.read_parquet(path)
-    embedding = np.vstack(df.iloc[id].values)
+    # Use PyArrow to read only the specific row without loading entire file
+    parquet_file = pq.ParquetFile(path)
+    
+    # Find which row group contains the target row
+    row_group_idx = None
+    rows_read = 0
+    num_row_groups = parquet_file.metadata.num_row_groups
+    for i in range(num_row_groups):
+        rg_metadata = parquet_file.metadata.row_group(i)
+        num_rows = rg_metadata.num_rows
+        if id < rows_read + num_rows:
+            row_group_idx = i
+            break
+        rows_read += num_rows
+    
+    if row_group_idx is None:
+        raise IndexError(f"Row ID {id} is out of bounds")
+    
+    # Read only the row group containing the target row
+    row_group = parquet_file.read_row_group(row_group_idx)
+    local_row_id = id - rows_read
+    
+    # Convert to pandas for easier indexing (only one row group in memory)
+    df = row_group.to_pandas()
+    
+    # Find the embedding column (could be 'hidden', 'embedding', or similar)
+    # Check common column names first
+    embedding_col = None
+    for col_name in ['hidden', 'embedding']:
+        if col_name in df.columns:
+            embedding_col = col_name
+            break
+    
+    # If no standard name found and only one column, use that
+    # Otherwise use the last column (assuming it's the embedding, not 'id')
+    if embedding_col is None:
+        if len(df.columns) == 1:
+            embedding_col = df.columns[0]
+        else:
+            # Exclude 'id' column if present and use the other one
+            non_id_cols = [col for col in df.columns if col != 'id']
+            embedding_col = non_id_cols[0] if non_id_cols else df.columns[-1]
+    
+    # Get the embedding value - extract as Python object first
+    embedding_data = df.iloc[local_row_id][embedding_col]
+    
+    # Convert to plain Python list first to handle all PyArrow/pandas types
+    if hasattr(embedding_data, 'as_py'):
+        # PyArrow type - convert to Python object
+        embedding_list = embedding_data.as_py()
+    elif hasattr(embedding_data, 'tolist'):
+        # Pandas Series or numpy array - convert to list
+        embedding_list = embedding_data.tolist()
+    elif isinstance(embedding_data, np.ndarray):
+        embedding_list = embedding_data.tolist()
+    elif isinstance(embedding_data, list):
+        embedding_list = embedding_data
+    else:
+        # Try to iterate and convert
+        try:
+            embedding_list = list(embedding_data)
+        except (TypeError, ValueError):
+            embedding_list = [embedding_data]
+    
+    # Now convert the Python list to numpy array
+    # Handle nested lists (list of lists = 2D embedding matrix)
+    embedding = None
+    if isinstance(embedding_list, list) and len(embedding_list) > 0:
+        # Check if it's nested (list of lists)
+        if isinstance(embedding_list[0], list):
+            # Nested list: [[...], [...], ...] - this is a 2D embedding
+            # Each inner list represents one token's embedding
+            embedding = np.array(embedding_list, dtype=np.float32)
+        else:
+            # Flat list: [...] - could be a flattened 2D embedding
+            # First convert to numpy array
+            embedding = np.array(embedding_list, dtype=np.float32)
+            
+            # Check if it might be a flattened 2D array by testing common dimensions
+            if embedding.ndim == 1:
+                total_size = embedding.shape[0]
+                # Common hidden dimensions to try (prioritize 2048 as it's mentioned in the error)
+                common_dims = [2048, 4096, 1024, 512, 768, 1280, 2560]
+                reshaped = False
+                for hidden_dim in common_dims:
+                    if total_size % hidden_dim == 0:
+                        num_tokens = total_size // hidden_dim
+                        # Only reshape if num_tokens is reasonable (not too small, not too large)
+                        if num_tokens > 1 and num_tokens < 10000:
+                            embedding = embedding.reshape(num_tokens, hidden_dim)
+                            reshaped = True
+                            break
+                if not reshaped:
+                    # If no common dimension works, treat as 1D and reshape to 1xN
+                    embedding = embedding.reshape(1, -1)
+    else:
+        # Empty or single value
+        embedding = np.array(embedding_list, dtype=np.float32)
+        if embedding.ndim == 0:
+            embedding = embedding.reshape(1, 1)
+        elif embedding.ndim == 1:
+            embedding = embedding.reshape(1, -1)
+    
+    # Final check: ensure it's 2D (num_tokens, hidden_dim)
+    if embedding.ndim == 1:
+        # If still 1D, try one more time to reshape (shouldn't happen with above logic, but just in case)
+        total_size = embedding.shape[0]
+        common_dims = [2048, 4096, 1024, 512, 768, 1280, 2560]
+        for hidden_dim in common_dims:
+            if total_size % hidden_dim == 0:
+                num_tokens = total_size // hidden_dim
+                if num_tokens > 1 and num_tokens < 10000:
+                    embedding = embedding.reshape(num_tokens, hidden_dim)
+                    break
+        else:
+            # If no dimension works, reshape to 1xN
+            embedding = embedding.reshape(1, -1)
+    elif embedding.ndim == 0:
+        embedding = embedding.reshape(1, 1)
+    
+    # Verify we have a proper 2D array before returning
+    if embedding.ndim != 2:
+        raise ValueError(f"Expected 2D embedding array, got {embedding.ndim}D with shape {embedding.shape}")
+
     return embedding.tolist()

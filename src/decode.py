@@ -36,20 +36,23 @@ def extract_fl_proof(text: str) -> str:
         return matches[-1].strip()  # last match
     return ""
 
-def wrap_prompt_in_query(informal_statement: str, informal_proof: str, examples: str = "", use_examples: bool = False):
+def wrap_prompt_in_query(informal_statement: str, informal_proof: str, has_lean_embeddings: bool = False):
     """
     Wraps the informal statement and proof in a prompt template similar to ProofBridge.
+    
+    Args:
+        informal_statement: The informal statement of the theorem
+        informal_proof: The informal proof in natural language
+        has_lean_embeddings: Whether lean embeddings (soft virtual tokens) representing the solution are included
     """
-    if use_examples and examples:
-        exampleInPrompt = "Here are a few examples:\n" + examples + "\n"
+    if has_lean_embeddings:
+        embedding_note = " Soft virtual tokens representing the target Lean 4 solution are provided as contextual embeddings - use these to guide your formalization."
     else:
-        exampleInPrompt = ""
+        embedding_note = ""
     
     input_query_template = f'''
     You task is to take as input an informal proof in natural language and autoformalize it in Lean 4 with a header. 
     Think step-by-step and ensure that the output formal theorem is compilabile with Lean 4 (version 4.15.0).
-
-    {exampleInPrompt}
 
     Here is the **actual** informal proof in natural language:
     <informal_statement>
@@ -60,18 +63,12 @@ def wrap_prompt_in_query(informal_statement: str, informal_proof: str, examples:
     {informal_proof}
     </informal_proof>
 
-    Now first think step-by-step for the actual output and autoformalize it in Lean 4 with a header. Importantly, enclose the final formal proof in Lean 4 inside the following tags:
-
-    <formal_proof>
-    ```lean4
-    (Provide your entire Lean 4 proof with header here)
-    ```
-    </formal_proof>
+    Now autoformalize it in Lean 4.{embedding_note}
     '''
 
     return input_query_template
 
-def decode_text(informal_statement: str, informal_proof: str, cfg: dict, examples: str = "", use_examples: bool = False, lean_embedding: list = None, verbose: bool = False):
+def decode_text(informal_statement: str, informal_proof: str, cfg: dict, lean_embedding: list = None, verbose: bool = False):
     """
     Given NL theorem-proof, decode to Lean theorem-proof.
 
@@ -79,8 +76,6 @@ def decode_text(informal_statement: str, informal_proof: str, cfg: dict, example
         informal_statement: The informal statement of the theorem
         informal_proof: The informal proof in natural language
         cfg: Configuration dictionary
-        examples: Optional examples string for few-shot prompting
-        use_examples: Whether to include examples in the prompt
         lean_embedding: The embedding of the Lean theorem-proof to be decoded as soft virtual tokens
                        Should be a numpy array with shape [num_tokens, hidden_dim]
         verbose: Whether to print verbose output
@@ -89,7 +84,10 @@ def decode_text(informal_statement: str, informal_proof: str, cfg: dict, example
     local_dir = cfg["models"].get("local_dir")
     nl_model, nl_tokenizer = load_model_and_tokenizer(cfg["models"]["nl_model"], cfg["extract"]["fp16"], causal=True, local_dir=local_dir)
 
-    input_text = wrap_prompt_in_query(informal_statement.strip(), informal_proof.strip(), examples, use_examples)
+    # Check if lean embeddings are provided
+    has_lean_embeddings = lean_embedding is not None
+    
+    input_text = wrap_prompt_in_query(informal_statement.strip(), informal_proof.strip(), has_lean_embeddings=has_lean_embeddings)
     if verbose:
         verbose_print("Wrapped input text: \n ", input_text)
 
@@ -117,7 +115,7 @@ def decode_text(informal_statement: str, informal_proof: str, cfg: dict, example
         verbose_print("Model device:", model_device)
     
     # Process lean_embedding as soft virtual tokens if provided
-    if lean_embedding is not None:
+    if has_lean_embeddings:
         # Convert to numpy array if it's not already
         if isinstance(lean_embedding, torch.Tensor):
             lean_emb = lean_embedding.detach().cpu().numpy()
@@ -165,17 +163,24 @@ def decode_text(informal_statement: str, informal_proof: str, cfg: dict, example
         lean_emb_batch = lean_emb_tensor.unsqueeze(0)  # [1, num_lean_tokens, hidden_dim]
         
         # Concatenate: [batch_size, num_lean_tokens + seq_len, hidden_dim]
+        # Put lean embeddings FIRST (as context), then input embeddings
         combined_embeddings = torch.cat([lean_emb_batch, input_embeddings], dim=1)
         
         if verbose:
             print("Combined embeddings shape:", combined_embeddings.shape)
+            print(f"Sequence breakdown: {num_lean_tokens} lean tokens + {input_embeddings.shape[1]} input tokens = {combined_embeddings.shape[1]} total")
         
         # Adjust attention mask to include lean tokens
         attention_mask = tokenized_input.get("attention_mask", torch.ones_like(input_ids))
         # Create attention mask for lean tokens (all ones)
+        # Match the order: lean tokens first, then input tokens
         lean_attention = torch.ones((attention_mask.shape[0], num_lean_tokens), 
                                      dtype=attention_mask.dtype, device=attention_mask.device)
         combined_attention_mask = torch.cat([lean_attention, attention_mask], dim=1)
+        
+        # Store original input length (without lean tokens) for later extraction
+        original_input_length = input_ids.shape[1]
+        num_lean_tokens_for_extraction = num_lean_tokens  # Store for later use
         
         if verbose:
             print("Original attention mask shape:", attention_mask.shape)
@@ -187,15 +192,25 @@ def decode_text(informal_statement: str, informal_proof: str, cfg: dict, example
             "inputs_embeds": combined_embeddings,
             "attention_mask": combined_attention_mask,
             "max_new_tokens": cfg["decode"]["max_new_tokens"],
-            "max_time": cfg["decode"]["max_time"]
+            "max_time": cfg["decode"]["max_time"],
+            "do_sample": cfg["decode"]["do_sample"],
+            "temperature": cfg["decode"]["temperature"],
+            "top_k": cfg["decode"]["top_k"],
+            "top_p": cfg["decode"]["top_p"]
         }
     else:
         # No lean embedding, use standard generation
         generation_kwargs = {
             **tokenized_input,
             "max_new_tokens": cfg["decode"]["max_new_tokens"],
-            "max_time": cfg["decode"]["max_time"]
+            "max_time": cfg["decode"]["max_time"],
+            "do_sample": cfg["decode"]["do_sample"],
+            "temperature": cfg["decode"]["temperature"],
+            "top_k": cfg["decode"]["top_k"],
+            "top_p": cfg["decode"]["top_p"]
         }
+        original_input_length = None  # Not needed when not using lean embeddings
+        num_lean_tokens_for_extraction = 0  # No lean tokens to skip
     
     # Generate with soft virtual tokens
     outputs = nl_model.generate(**generation_kwargs)
@@ -206,7 +221,7 @@ def decode_text(informal_statement: str, informal_proof: str, cfg: dict, example
     if verbose:
         print("Full output: \n ", full_output)
     
-    # Extract the Lean code from the output
+    # Extract the Lean code from the generated output (without the prompt)
     # First try to extract from <formal_proof> tags
     extracted_from_tags = extract_fl_proof_betweenTags(full_output, "formal_proof")
     if verbose:
@@ -216,7 +231,7 @@ def decode_text(informal_statement: str, informal_proof: str, cfg: dict, example
         lean_code = extract_fl_proof(extracted_from_tags)
         if lean_code:
             return lean_code
-    # Fallback: try extracting directly from full output
+    # Fallback: try extracting directly from generated output
     lean_code = extract_fl_proof(full_output)
     if lean_code:
         return lean_code
@@ -236,7 +251,8 @@ def main(cfg: dict):
     print(f"NL Text: {nl_text}")
     print(f"NL Proof: {nl_proof}")
 
-    lean_embedding = load_embedding(f'{cfg["data"]["out_dir"]}/lean_embeddings.parquet', id)
+    lean_embedding = load_embedding(f'{cfg["data"]["out_dir"]}/kimina17_all_lean_embeddings.parquet', id)
+    # lean_embedding = None
     decoded_text = decode_text(nl_text, nl_proof, cfg, lean_embedding=lean_embedding, verbose=True)
     print(f"Decoded text: {decoded_text}")
 
