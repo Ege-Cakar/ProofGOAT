@@ -22,3 +22,4 @@ decode:
   examples_path: "data/examples.yaml"
   temperature: 0.6
   top_p: 0.95
+  soft_tokens: true
