@@ -1,10 +1,11 @@
 data:
   input_jsonl: "data/herald_pairs.jsonl"    # [{"id": "...", "nl_proof": "...", "lean_proof": "..."}]
+  input_jsonl_with_text: "data/herald_pairs_with_text.jsonl"    # [{"id": "...", "nl_text": "...", "lean_text": "...", "nl_proof": "...", "lean_proof": "..."}]
   out_dir: "outputs/"
 
 models:
-  nl_model: "AI-MO/Kimina-Prover-Distill-8B"
-  lean_model: "AI-MO/Kimina-Prover-Distill-8B"
+  nl_model: "AI-MO/Kimina-Prover-Distill-1.7B"
+  lean_model: "AI-MO/Kimina-Prover-Distill-1.7B"
 
 extract:
   nl_layer: -1
@@ -46,3 +47,11 @@ neural_ot:
   
   # Optional: limit samples for debugging (set to null for full dataset)
   max_samples: null
+
+decode:
+  max_new_tokens: 12000
+  max_time: 90
+  use_examples_in_prompt: true
+  examples_path: "data/examples.yaml"
+  temperature: 0.6
+  top_p: 0.95
