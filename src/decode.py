@@ -416,20 +416,19 @@ def decode_embedding(embedding, cfg: dict, verbose: bool = False):
     return decoded_text
 
 def main(cfg: dict):
-    id = 2 # test with one example
+    lean_embedding, id = load_embedding(f'{cfg["data"]["out_dir"]}/kimina17_all_lean_embeddings.parquet', row=1)
     pairs = read_jsonl(cfg["data"]["input_jsonl_with_text"])
 
     nl_text = pairs[id]["nl_text"]
     nl_proof = pairs[id]["nl_proof"]
-
+    print(f"============== ID: {id} ==============")
 
     print(f"NL Text: {nl_text}")
     print(f"NL Proof: {nl_proof}")
 
-    lean_embedding = load_embedding(f'{cfg["data"]["out_dir"]}/kimina17_all_lean_embeddings.parquet', id)
-    shortcut_decoded_text = decode_embedding(lean_embedding, cfg, verbose=True)
-    print(f"Shortcut decoded text: {shortcut_decoded_text}")
-    # lean_embedding = None
+    # shortcut_decoded_text = decode_embedding(lean_embedding, cfg, verbose=True)
+    # print(f"Shortcut decoded text: {shortcut_decoded_text}")
+    lean_embedding = None
     decoded_text = decode_text(nl_text, nl_proof, cfg, lean_embedding=lean_embedding, verbose=True)
     print(f"Decoded text: {decoded_text}")
 
