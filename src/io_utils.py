@@ -1,5 +1,7 @@
 import json, os, pandas as pd, numpy as np, pyarrow as pa, pyarrow.parquet as pq
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Optional
+from pathlib import Path
+import yaml
 
 def read_jsonl(path: str) -> List[Dict]:
     with open(path, "r", encoding="utf-8") as f:
@@ -73,27 +75,7 @@ def load_embedding(path: str, id: int):
     
     # Convert to pandas for easier indexing (only one row group in memory)
     df = row_group.to_pandas()
-    
-    # Find the embedding column (could be 'hidden', 'embedding', or similar)
-    # Check common column names first
-    embedding_col = None
-    for col_name in ['hidden', 'embedding']:
-        if col_name in df.columns:
-            embedding_col = col_name
-            break
-    
-    # If no standard name found and only one column, use that
-    # Otherwise use the last column (assuming it's the embedding, not 'id')
-    if embedding_col is None:
-        if len(df.columns) == 1:
-            embedding_col = df.columns[0]
-        else:
-            # Exclude 'id' column if present and use the other one
-            non_id_cols = [col for col in df.columns if col != 'id']
-            embedding_col = non_id_cols[0] if non_id_cols else df.columns[-1]
-    
-    # Get the embedding value - extract as Python object first
-    embedding_data = df.iloc[local_row_id][embedding_col]
+    embedding_data = df.iloc[local_row_id]['hidden']
     
     # Convert to plain Python list first to handle all PyArrow/pandas types
     if hasattr(embedding_data, 'as_py'):
@@ -174,3 +156,40 @@ def load_embedding(path: str, id: int):
         raise ValueError(f"Expected 2D embedding array, got {embedding.ndim}D with shape {embedding.shape}")
 
     return embedding.tolist()
+
+def load_examples(examples_path: str, verbose: bool = False) -> Optional[str]:
+    """
+    Load examples from a YAML file.
+    
+    Args:
+        examples_path: Path to the examples YAML file
+        verbose: Whether to print verbose output
+    
+    Returns:
+        Examples string if successfully loaded, None otherwise
+    """
+    try:
+        # Resolve path - try as-is first, then relative to current working directory
+        examples_path_obj = Path(examples_path)
+        if not examples_path_obj.is_absolute():
+            # Try relative to current working directory
+            if not examples_path_obj.exists():
+                # Try relative to HERMES directory (assuming we're in src/)
+                cwd = Path.cwd()
+                if cwd.name == "src":
+                    examples_path_obj = cwd.parent / examples_path
+                else:
+                    examples_path_obj = cwd / examples_path
+        else:
+            examples_path_obj = Path(examples_path)
+        
+        with open(examples_path_obj, "r") as f:
+            examples_data = yaml.safe_load(f)
+            examples_in_prompt = examples_data.get("examples", "")
+            if verbose:
+                print(f"Loaded examples from {examples_path_obj} ({len(examples_in_prompt)} characters)")
+            return examples_in_prompt
+    except Exception as e:
+        if verbose:
+            print(f"Warning: Could not load examples from {examples_path}: {e}")
+        return None
