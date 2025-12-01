@@ -2,9 +2,12 @@ torch==2.2.2
 torchaudio==2.2.2
 torchvision==0.17.2
 
-transformers==4.39.3
-accelerate==0.28.0
-huggingface-hub==0.21.2
+# Updated to support qwen3 architecture used by AI-MO/Kimina-Prover-Distill-8B
+# According to Hugging Face docs, qwen3 support was added in transformers 4.51.0
+# See: https://huggingface.co/docs/transformers/main/model_doc/qwen3
+transformers>=4.51.0
+accelerate>=0.30.0
+huggingface-hub>=0.23.0
 
 numpy==1.26.4
 pandas==2.2.0
@@ -15,11 +18,11 @@ requests==2.32.3
 tqdm==4.66.4
 datasets==2.19.0
 
-safetensors==0.4.2
+safetensors>=0.4.2
 protobuf==4.25.3
 
 GitPython==3.1.42
 psutil==5.9.8
 
 pot>=0.9.0
-pot
+dropbox==12.0.2

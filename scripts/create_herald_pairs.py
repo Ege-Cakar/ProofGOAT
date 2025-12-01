@@ -4,7 +4,7 @@ import random
 from typing import List, Dict
 
 
-OUT_PATH = "data/herald_pairs.jsonl"
+OUT_PATH = "data/herald_pairs_with_text.jsonl"
 
 
 def is_valid(ex: Dict) -> bool:
@@ -37,6 +37,8 @@ def main():
             records.append({
                 # Prefer existing id if present; otherwise create one later
                 "_id": ex.get("id"),
+                "nl_text": ex["informal_theorem"], # for herald_pairs_with_text.jsonl only
+                "lean_text": ex["formal_theorem"], # for herald_pairs_with_text.jsonl only
                 "nl_proof": ex["informal_proof"],
                 "lean_proof": ex["formal_proof"],
             })
