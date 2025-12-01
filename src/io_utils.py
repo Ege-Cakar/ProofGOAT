@@ -37,13 +37,13 @@ def verbose_print(*args):
     to_print = boundary + "\n" + " ".join(str(arg) for arg in args) + "\n" + boundary
     print(to_print, flush=True)
 
-def load_embedding(path: str, id: int):
+def load_embedding(path: str, row: int):
     """
     Load embedding from parquet file.
     
     Args:
         path: Path to the parquet file
-        id: row ID of the embedding to load
+        row: row ID of the embedding to load
 
     Note:
         The embedding is a numpy array with shape [num_tokens, hidden_dim]
@@ -61,21 +61,22 @@ def load_embedding(path: str, id: int):
     for i in range(num_row_groups):
         rg_metadata = parquet_file.metadata.row_group(i)
         num_rows = rg_metadata.num_rows
-        if id < rows_read + num_rows:
+        if row < rows_read + num_rows:
             row_group_idx = i
             break
         rows_read += num_rows
     
     if row_group_idx is None:
-        raise IndexError(f"Row ID {id} is out of bounds")
+        raise IndexError(f"Row ID {row} is out of bounds")
     
     # Read only the row group containing the target row
     row_group = parquet_file.read_row_group(row_group_idx)
-    local_row_id = id - rows_read
+    local_row_id = row - rows_read
     
     # Convert to pandas for easier indexing (only one row group in memory)
     df = row_group.to_pandas()
     embedding_data = df.iloc[local_row_id]['hidden']
+    id = int(df.iloc[local_row_id]['id'])
     
     # Convert to plain Python list first to handle all PyArrow/pandas types
     if hasattr(embedding_data, 'as_py'):
@@ -155,7 +156,7 @@ def load_embedding(path: str, id: int):
     if embedding.ndim != 2:
         raise ValueError(f"Expected 2D embedding array, got {embedding.ndim}D with shape {embedding.shape}")
 
-    return embedding.tolist()
+    return embedding.tolist(), id
 
 def load_examples(examples_path: str, verbose: bool = False) -> Optional[str]:
     """

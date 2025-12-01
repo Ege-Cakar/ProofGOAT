@@ -1,14 +1,29 @@
-from model_utils import load_model_and_tokenizer
-from io_utils import read_jsonl, verbose_print, load_embedding, load_examples
 import argparse
+import os
+from sqlite3 import Row
+import sys
 import yaml
 import re
 import pandas as pd
 import torch
 import torch.nn.functional as F
 import numpy as np
+import pprint
 from pathlib import Path
 from typing import Optional
+
+# Set up paths: add project root and src directory to sys.path
+# This allows imports from both src (local modules) and scripts
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
+from model_utils import load_model_and_tokenizer
+from io_utils import read_jsonl, verbose_print, load_embedding, load_examples
+from scripts.test_lean import test_lean_code
 
 def extract_fl_proof_betweenTags(text, TAG):
     """
@@ -416,22 +431,29 @@ def decode_embedding(embedding, cfg: dict, verbose: bool = False):
     return decoded_text
 
 def main(cfg: dict):
-    id = 2 # test with one example
-    pairs = read_jsonl(cfg["data"]["input_jsonl_with_text"])
+    rows = range(1, 10)
+    for row in rows:
+        lean_embedding, id = load_embedding(f'{cfg["data"]["out_dir"]}/kimina17_all_lean_embeddings.parquet', row=row)
+        pairs = read_jsonl(cfg["data"]["input_jsonl_with_text"])
 
-    nl_text = pairs[id]["nl_text"]
-    nl_proof = pairs[id]["nl_proof"]
+        nl_text = pairs[id]["nl_text"]
+        nl_proof = pairs[id]["nl_proof"]
+        print(f"============== ID: {id} ==============")
 
+        print(f"NL Text: {nl_text}")
+        print(f"NL Proof: {nl_proof}")
 
-    print(f"NL Text: {nl_text}")
-    print(f"NL Proof: {nl_proof}")
+        # shortcut_decoded_text = decode_embedding(lean_embedding, cfg, verbose=True)
+        # print(f"Shortcut decoded text: {shortcut_decoded_text}")
+        if cfg["decode"].get("soft_tokens", False):
+            lean_embedding = None
+        decoded_text = decode_text(nl_text, nl_proof, cfg, lean_embedding=lean_embedding, verbose=False)
 
-    lean_embedding = load_embedding(f'{cfg["data"]["out_dir"]}/kimina17_all_lean_embeddings.parquet', id)
-    shortcut_decoded_text = decode_embedding(lean_embedding, cfg, verbose=True)
-    print(f"Shortcut decoded text: {shortcut_decoded_text}")
-    # lean_embedding = None
-    decoded_text = decode_text(nl_text, nl_proof, cfg, lean_embedding=lean_embedding, verbose=True)
-    print(f"Decoded text: {decoded_text}")
+        result = test_lean_code(decoded_text, verbose=False)
+        pprint.pprint(f"Test result: {result}")
+        if result["success"]:
+            print("✅ decoded text:\n", decoded_text)
+        sys.stdout.flush()
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()

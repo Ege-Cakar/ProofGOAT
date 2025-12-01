@@ -115,3 +115,42 @@ We evaluate:
 - **OT trajectory diagnostics:** latent flow visualization
 
 ---
+
+## Overview of end-to-end pipeline
+
+The HERMES pipeline consists of the following stages:
+
+### 1. Project natural language onto embedding space
+- Tokenize theorem and proof pair
+- Project onto dimension 2048 using `AI-MO/Kimina-Prover-Distill-1.7B` input embedding layer
+
+### 2. Embedding translation 
+- Use learned vector field from Neural OT to transport / match each of the natural language embeddings to  vectors in the embedding space that represent lean tokens  
+
+### 3. Soft-token Decoding
+- Concatenate the new lean embedding onto the embedded natural language prompt
+- Do LLM forward pass to decode to tokens 
+
+### 4. Post-processing
+- Extract the lean code and verify with standard REPL
+
+### Data Flow
+```
+NL Theorem + Proof
+       ↓
+[1] Tokenization & Embedding
+       ↓
+  NL Embeddings (dim 2048)
+       ↓
+[2] Neural OT Transport (v_θ)
+       ↓
+  Lean Embeddings (soft tokens)
+       ↓
+[3] Concatenate with Prompt → LLM Forward Pass
+       ↓
+  Generated Tokens
+       ↓
+[4] Extract Lean Code → REPL Validation
+       ↓
+  Verified Lean4 Proof
+```
