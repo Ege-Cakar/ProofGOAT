@@ -8,7 +8,7 @@ ProofGOAT is an experimental pipeline for aligning natural-language mathematical
 
 ## Project Structure
 ```
-HERMES/
+ProofGOAT/
 ├── scripts/
 │ ├── create_pairs.py # Load ProofNet from HF Parquet and build pairs.jsonl
 │ ├── prepare_dataset.py # Build metadata and preprocess text
@@ -120,7 +120,7 @@ We evaluate:
 
 ## Overview of end-to-end pipeline
 
-The HERMES pipeline consists of the following stages:
+The ProofGOAT pipeline consists of the following stages:
 
 ### 1. Project natural language onto embedding space
 - Tokenize theorem and proof pair
