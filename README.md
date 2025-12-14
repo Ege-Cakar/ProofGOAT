@@ -1,12 +1,12 @@
-# HERMES: Optimal Transport for Bidirectional Proof Translation
+# ProofGoat: Optimal Transport for Bidirectional Proof Translation
 
-HERMES is an experimental pipeline for aligning natural-language mathematical proofs with Lean formal proofs using continuous Optimal Transport (OT) flows. The goal is to investigate whether internal activations from one reasoning domain (NL or Lean) can improve performance in the other, and whether hidden representations contain more transferable reasoning information than raw text.
+ProofGoat is an experimental pipeline for aligning natural-language mathematical proofs with Lean formal proofs using continuous Optimal Transport (OT) flows. The goal is to investigate whether internal activations from one reasoning domain (NL or Lean) can improve performance in the other, and whether hidden representations contain more transferable reasoning information than raw text.
 
 ---
 
 ## Project Structure
 ```
-HERMES/
+ProofGoat/
 ├── scripts/
 │ ├── create_pairs.py # Load ProofNet from HF Parquet and build pairs.jsonl
 │ ├── prepare_dataset.py # Build metadata and preprocess text
